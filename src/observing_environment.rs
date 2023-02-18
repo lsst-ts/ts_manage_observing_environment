@@ -9,6 +9,7 @@ use std::{
 };
 
 const REPO_VERSION_REGEXP: &str = r"(?P<name>[a-zA-Z0-9_]*)=(?P<version>[a-zA-Z0-9._]*)";
+const VALID_VERSION: &str = r"(?P<major>[0-9]*)\.(?P<minor>[0-9]*)\.(?P<patch>[0-9]*)";
 
 pub struct ObservingEnvironment {
     /// List of repositories that belong to the observing environment.
@@ -281,10 +282,16 @@ impl ObservingEnvironment {
     /// Expands version string into a tag, following the format adopted by
     /// TSSW.
     fn expand_version_to_tag(version: &str) -> String {
-        format!("v{version}")
-            .replace("a", ".alpha.")
-            .replace("b", ".beta.")
-            .replace("rc", ".rc.")
+        let version_regex = Regex::new(VALID_VERSION).unwrap();
+
+        if version_regex.is_match(version) {
+            format!("v{version}")
+                .replace("a", ".alpha.")
+                .replace("b", ".beta.")
+                .replace("rc", ".rc.")
+        } else {
+            version.to_owned()
+        }
     }
 
     fn checkout_tag(repository: Repository, tag: String, version: &str) -> Result<(), Error> {
@@ -305,7 +312,7 @@ mod tests {
 
     use regex::Regex;
 
-    use super::{ObservingEnvironment, REPO_VERSION_REGEXP};
+    use super::{ObservingEnvironment, REPO_VERSION_REGEXP, VALID_VERSION};
 
     use once_cell::sync::Lazy;
     use std::sync::Mutex;
@@ -369,5 +376,19 @@ mod tests {
         for (repo, _) in obs_env.repositories {
             assert!(base_env_versions.contains_key(&repo))
         }
+    }
+
+    #[test]
+    fn test_is_valid_version() {
+        let version_regex = Regex::new(VALID_VERSION).unwrap();
+
+        assert!(version_regex.is_match("1.2.3"));
+        assert!(version_regex.is_match("10.200.300"));
+        assert!(version_regex.is_match("1.20.3a1"));
+        assert!(version_regex.is_match("1.20.3b1"));
+        assert!(version_regex.is_match("1.20.3rc1"));
+        assert!(!version_regex.is_match("main"));
+        assert!(!version_regex.is_match("develop"));
+        assert!(!version_regex.is_match("ticket/DM-12345"));
     }
 }
