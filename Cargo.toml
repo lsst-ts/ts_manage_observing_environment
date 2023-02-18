@@ -1,0 +1,18 @@
+[package]
+name = "ts_observing_environment"
+version = "0.2.0-alpha.1"
+edition = "2021"
+description = "Package to manage observing environment."
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = { version = "4.1.6", features = ["derive"] }
+git2 = "0.16.1"
+log = "0.4.17"
+regex = "1.7.1"
+simple_logger = "4.0.0"
+
+[dev-dependencies]
+once_cell = "1.17.1"
