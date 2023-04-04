@@ -1,5 +1,5 @@
 use crate::error::ObsEnvError;
-use git2::{Error, Repository};
+use git2::{build::CheckoutBuilder, DescribeFormatOptions, DescribeOptions, Error, Repository};
 use regex::Regex;
 use std::{
     collections::HashMap,
@@ -187,7 +187,7 @@ impl ObservingEnvironment {
     ///
     /// This method will parse the base_env_def_file (e.g. cycle/cycle.env) to
     /// get the versions of the base env packages.
-    fn get_base_env_versions(&self) -> Result<HashMap<String, String>, ObsEnvError> {
+    pub fn get_base_env_versions(&self) -> Result<HashMap<String, String>, ObsEnvError> {
         match self.load_base_env_def_file() {
             Ok(base_env_def) => {
                 let base_env_versions: Vec<Option<&String>> = self
@@ -218,6 +218,38 @@ impl ObservingEnvironment {
                     .collect())
             }
             Err(obs_env_err) => Err(obs_env_err),
+        }
+    }
+
+    /// Get current package versions.
+    pub fn get_current_env_versions(&self) -> HashMap<String, Result<String, ObsEnvError>> {
+        self.repositories
+            .iter()
+            .map(|(repo_name, _)| (repo_name.to_owned(), self.get_current_version(repo_name)))
+            .collect()
+    }
+
+    fn get_current_version(&self, repo_name: &str) -> Result<String, ObsEnvError> {
+        if let Ok(repository) = Repository::open(Path::new(&self.destination).join(repo_name)) {
+            let mut opts = DescribeOptions::new();
+
+            match repository.describe(&opts.show_commit_oid_as_fallback(true)) {
+                Ok(description) => match description.format(None) {
+                    Ok(description) => Ok(description),
+                    Err(error) => Err(ObsEnvError::GIT(format!(
+                        "Error describing {repo_name}: {}",
+                        error.message()
+                    ))),
+                },
+                Err(error) => Err(ObsEnvError::GIT(format!(
+                    "Can't retrieve {repo_name} HEAD: {}",
+                    error.message()
+                ))),
+            }
+        } else {
+            Err(ObsEnvError::GIT(format!(
+                "Failed to open repository: {repo_name}"
+            )))
         }
     }
 
@@ -268,9 +300,12 @@ impl ObservingEnvironment {
         if let Ok(repository) = Repository::open(Path::new(&self.destination).join(repo)) {
             let tag = ObservingEnvironment::expand_version_to_tag(version);
 
-            match ObservingEnvironment::checkout_tag(repository, tag, version) {
+            match ObservingEnvironment::checkout_tag_or_branch(repository, &tag, version) {
                 Ok(()) => Ok(()),
-                Err(error) => Err(ObsEnvError::GIT(error.message().to_owned())),
+                Err(error) => Err(ObsEnvError::GIT(format!(
+                    "Could not checkout tag or branch for {repo}@{tag}[{version}]: {}",
+                    error.message().to_owned()
+                ))),
             }
         } else {
             Err(ObsEnvError::GIT(format!(
@@ -294,14 +329,42 @@ impl ObservingEnvironment {
         }
     }
 
-    fn checkout_tag(repository: Repository, tag: String, version: &str) -> Result<(), Error> {
-        match repository.revparse_single(&("refs/tags/".to_owned() + &tag)) {
+    fn checkout_tag_or_branch(
+        repository: Repository,
+        tag: &str,
+        version: &str,
+    ) -> Result<(), Error> {
+        // Try to find the tag first
+        let spec = "refs/tags/".to_owned() + tag;
+        log::trace!("Checkout spec {spec}");
+        match repository.revparse_single(&spec) {
             Ok(object) => {
-                // repository.reset(&object, git2::ResetType::Hard, None)?;
                 repository.branch(version, &object.peel_to_commit().unwrap(), true)?;
+                repository.set_head(&spec)?;
+                let mut checkout_build = CheckoutBuilder::new();
+                repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
                 Ok(())
             }
-            Err(error) => Err(error),
+            Err(_) => {
+                // Fallback to try finding a branch
+                let spec = "refs/remotes/origin/".to_owned() + tag;
+                log::trace!("Failed to check tag, trying it as a branch: {spec}");
+                match repository.revparse_single(&spec) {
+                    Ok(object) => {
+                        repository.branch(version, &object.peel_to_commit().unwrap(), true)?;
+                        repository.set_head(&spec)?;
+                        let mut checkout_build = CheckoutBuilder::new();
+                        repository.reset(
+                            &object,
+                            git2::ResetType::Hard,
+                            Some(checkout_build.force()),
+                        )?;
+                        Ok(())
+                    }
+                    // Return original error.
+                    Err(error) => Err(error),
+                }
+            }
         }
     }
 }

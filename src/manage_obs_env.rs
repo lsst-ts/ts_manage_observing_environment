@@ -82,8 +82,27 @@ where
                 log::info!("All repositories set to they base versions.");
             }
         }
-        Action::ShowCurrentVersions => log::info!("Executing ShowCurrentVersions..."),
-        Action::ShowOriginalVersions => log::info!("Executing ShowOriginalVersions..."),
+        Action::ShowCurrentVersions => {
+            log::info!("Current environment versions:");
+            let current_versions = obs_env.get_current_env_versions();
+            for (name, version) in current_versions.iter() {
+                match version {
+                    Ok(version) => log::info!("{name}: {version}"),
+                    Err(error) => log::error!("{name}: {error:?}"),
+                }
+            }
+        }
+        Action::ShowOriginalVersions => match obs_env.get_base_env_versions() {
+            Ok(base_env_versions) => {
+                log::info!("Base Environment versions:");
+                for (name, version) in base_env_versions.iter() {
+                    log::info!("{name}: {version}");
+                }
+            }
+            Err(error) => {
+                log::error!("{error:?}");
+            }
+        },
     };
     Ok(())
 }
