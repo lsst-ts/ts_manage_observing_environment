@@ -230,26 +230,28 @@ impl ObservingEnvironment {
     }
 
     fn get_current_version(&self, repo_name: &str) -> Result<String, ObsEnvError> {
-        if let Ok(repository) = Repository::open(Path::new(&self.destination).join(repo_name)) {
-            let mut opts = DescribeOptions::new();
+        match Repository::open(Path::new(&self.destination).join(repo_name)) {
+            Ok(repository) => {
+                let mut opts = DescribeOptions::new();
 
-            match repository.describe(&opts.show_commit_oid_as_fallback(true)) {
-                Ok(description) => match description.format(None) {
-                    Ok(description) => Ok(description),
+                match repository.describe(&opts.show_commit_oid_as_fallback(true)) {
+                    Ok(description) => match description.format(None) {
+                        Ok(description) => Ok(description),
+                        Err(error) => Err(ObsEnvError::GIT(format!(
+                            "Error describing {repo_name}: {}",
+                            error.message()
+                        ))),
+                    },
                     Err(error) => Err(ObsEnvError::GIT(format!(
-                        "Error describing {repo_name}: {}",
+                        "Can't retrieve {repo_name} HEAD: {}",
                         error.message()
                     ))),
-                },
-                Err(error) => Err(ObsEnvError::GIT(format!(
-                    "Can't retrieve {repo_name} HEAD: {}",
-                    error.message()
-                ))),
+                }
             }
-        } else {
-            Err(ObsEnvError::GIT(format!(
-                "Failed to open repository: {repo_name}"
-            )))
+            Err(error) => Err(ObsEnvError::GIT(format!(
+                "Failed to open repository {repo_name}: {}",
+                error.message()
+            ))),
         }
     }
 
