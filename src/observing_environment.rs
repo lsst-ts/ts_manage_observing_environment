@@ -9,7 +9,7 @@ use std::{
 };
 
 const REPO_VERSION_REGEXP: &str = r"(?P<name>[a-zA-Z0-9_]*)=(?P<version>[a-zA-Z0-9._]*)";
-const VALID_VERSION: &str = r"(?P<major>[0-9]*)\.(?P<minor>[0-9]*)\.(?P<patch>[0-9]*)";
+const VALID_VERSION: &str = r"^(?P<major>[0-9]*)\.(?P<minor>[0-9]*)\.(?P<patch>[0-9]*)";
 
 pub struct ObservingEnvironment {
     /// List of repositories that belong to the observing environment.
@@ -458,6 +458,7 @@ mod tests {
         assert!(version_regex.is_match("1.20.3a1"));
         assert!(version_regex.is_match("1.20.3b1"));
         assert!(version_regex.is_match("1.20.3rc1"));
+        assert!(!version_regex.is_match("w.2023.13"));
         assert!(!version_regex.is_match("main"));
         assert!(!version_regex.is_match("develop"));
         assert!(!version_regex.is_match("ticket/DM-12345"));
