@@ -1,5 +1,5 @@
 use crate::error::ObsEnvError;
-use git2::{build::CheckoutBuilder, DescribeFormatOptions, DescribeOptions, Error, Repository};
+use git2::{build::CheckoutBuilder, DescribeOptions, Error, Repository, FetchOptions};
 use regex::Regex;
 use std::{
     collections::HashMap,
@@ -336,6 +336,12 @@ impl ObservingEnvironment {
         tag: &str,
         version: &str,
     ) -> Result<(), Error> {
+        log::trace!("Fetching...");
+        let mut fetch_options = FetchOptions::new();
+        fetch_options.download_tags(git2::AutotagOption::All);
+        
+        repository.find_remote("origin")?.fetch(&[""], Some(&mut fetch_options), None)?;
+
         // Try to find the tag first
         let spec = "refs/tags/".to_owned() + tag;
         log::trace!("Checkout spec {spec}");
