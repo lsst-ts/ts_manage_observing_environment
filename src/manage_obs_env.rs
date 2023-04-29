@@ -1,4 +1,4 @@
-use crate::observing_environment::ObservingEnvironment;
+use crate::{error::ObsEnvError, observing_environment::ObservingEnvironment};
 use clap::{Parser, ValueEnum};
 use log;
 use std::error::Error;
@@ -11,27 +11,56 @@ pub struct ManageObsEnv {
     #[arg(value_enum, long = "action")]
     action: Action,
     /// Log level.
-    #[arg(value_enum, long = "log-level")]
+    #[arg(value_enum, long = "log-level", default_value = "debug")]
     log_level: LogLevel,
     /// Path to the environment.
     #[arg(long = "env-path", default_value = "/obs-env")]
     env_path: String,
+    /// Repository to act on (for actions on individual repos).
+    #[arg(long = "repository", default_value = "")]
+    repository: String,
+    /// Name of the branch to checkout when running the "CheckoutBranch"
+    /// option.
+    #[arg(long = "branch-name", default_value = "")]
+    branch_name: String,
 }
 pub trait ManageObsEnvCli {
-    fn get_action(&self) -> &Action;
+    fn get_action(&self) -> Result<&Action, Box<dyn Error>>;
     fn get_log_level(&self) -> &LogLevel;
     fn get_env_path(&self) -> &str;
+    fn get_branch_name(&self) -> &str;
+    fn get_repository_name(&self) -> &str;
 }
 
 impl ManageObsEnvCli for ManageObsEnv {
-    fn get_action(&self) -> &Action {
-        &self.action
+    fn get_action(&self) -> Result<&Action, Box<dyn Error>> {
+        match self.action {
+            Action::CheckoutBranch => {
+                if self.repository.len() == 0 {
+                    return Err(Box::new(ObsEnvError::ERROR(
+                        "Checkout branch action requires a repository, none given".to_owned(),
+                    )));
+                } else if self.branch_name.len() == 0 {
+                    return Err(Box::new(ObsEnvError::ERROR(
+                        "Checkout branch action requires a branch name, none given".to_owned(),
+                    )));
+                }
+                Ok(&self.action)
+            }
+            _ => Ok(&self.action),
+        }
     }
     fn get_log_level(&self) -> &LogLevel {
         &self.log_level
     }
     fn get_env_path(&self) -> &str {
         &self.env_path
+    }
+    fn get_branch_name(&self) -> &str {
+        &self.branch_name
+    }
+    fn get_repository_name(&self) -> &str {
+        &self.repository
     }
 }
 
@@ -51,7 +80,7 @@ where
 
     let obs_env = ObservingEnvironment::with_destination(config.get_env_path());
 
-    match config.get_action() {
+    match config.get_action()? {
         Action::Setup => {
             log::info!("Executing Setup...");
 
@@ -103,6 +132,9 @@ where
                 log::error!("{error:?}");
             }
         },
+        Action::CheckoutBranch => {
+            obs_env.checkout_branch(config.get_repository_name(), config.get_branch_name())?;
+        }
     };
     Ok(())
 }
@@ -122,6 +154,8 @@ pub enum Action {
     ShowCurrentVersions,
     /// Show original versions.
     ShowOriginalVersions,
+    /// Checkout a branch in a repository.
+    CheckoutBranch,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
