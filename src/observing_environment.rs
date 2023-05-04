@@ -126,28 +126,23 @@ impl ObservingEnvironment {
 
     /// Reset all repositories to their official version.
     pub fn reset_base_environment(&self, base_env_branch: &str) -> Result<(), Vec<ObsEnvError>> {
-        let update_base_env_res = self.update_base_env_source(base_env_branch);
+        match self.get_base_env_versions(base_env_branch) {
+            Ok(obs_env_versions) => {
+                let reset_result: Vec<ObsEnvError> = obs_env_versions
+                    .into_iter()
+                    .map(|(repo, version)| self.reset_index_to_version(&repo, &version))
+                    .into_iter()
+                    .filter(|result| result.is_err())
+                    .map(|err| err.unwrap_err())
+                    .collect();
 
-        match update_base_env_res {
-            Ok(_) => match self.get_base_env_versions() {
-                Ok(obs_env_versions) => {
-                    let reset_result: Vec<ObsEnvError> = obs_env_versions
-                        .into_iter()
-                        .map(|(repo, version)| self.reset_index_to_version(&repo, &version))
-                        .into_iter()
-                        .filter(|result| result.is_err())
-                        .map(|err| err.unwrap_err())
-                        .collect();
-
-                    if reset_result.is_empty() {
-                        Ok(())
-                    } else {
-                        Err(reset_result)
-                    }
+                if reset_result.is_empty() {
+                    Ok(())
+                } else {
+                    Err(reset_result)
                 }
-                Err(err_get_base_env_versions) => Err(vec![err_get_base_env_versions]),
-            },
-            Err(error) => Err(vec![ObsEnvError::GIT(error.message().to_owned())]),
+            }
+            Err(err_get_base_env_versions) => Err(vec![err_get_base_env_versions]),
         }
     }
 
@@ -215,37 +210,45 @@ impl ObservingEnvironment {
     ///
     /// This method will parse the base_env_def_file (e.g. cycle/cycle.env) to
     /// get the versions of the base env packages.
-    pub fn get_base_env_versions(&self) -> Result<HashMap<String, String>, ObsEnvError> {
-        match self.load_base_env_def_file() {
-            Ok(base_env_def) => {
-                let base_env_versions: Vec<Option<&String>> = self
-                    .repositories
-                    .iter()
-                    .map(|(repo_name, _)| {
-                        base_env_def.iter().find(|line| line.starts_with(repo_name))
-                    })
-                    .collect();
-                // This should never fail because we know REPO_VERSION_REGEXP is
-                // valid.
-                let regex = Regex::new(REPO_VERSION_REGEXP).unwrap();
-                Ok(base_env_versions
-                    .into_iter()
-                    .filter(|name_version| name_version.is_some())
-                    .map(|name_version| regex.captures(name_version.unwrap()))
-                    .filter(|captured_name_version| captured_name_version.is_some())
-                    .map(|captured_name_version| {
-                        if let Some(captured_name_version) = captured_name_version {
-                            (
-                                captured_name_version["name"].to_owned(),
-                                captured_name_version["version"].to_owned(),
-                            )
-                        } else {
-                            panic!("Could not read captured name/version");
-                        }
-                    })
-                    .collect())
+    pub fn get_base_env_versions(
+        &self,
+        base_env_branch: &str,
+    ) -> Result<HashMap<String, String>, ObsEnvError> {
+        match self.update_base_env_source(base_env_branch) {
+            Ok(_) => {
+                match self.load_base_env_def_file() {
+                    Ok(base_env_def) => {
+                        let base_env_versions: Vec<Option<&String>> = self
+                            .repositories
+                            .iter()
+                            .map(|(repo_name, _)| {
+                                base_env_def.iter().find(|line| line.starts_with(repo_name))
+                            })
+                            .collect();
+                        // This should never fail because we know REPO_VERSION_REGEXP is
+                        // valid.
+                        let regex = Regex::new(REPO_VERSION_REGEXP).unwrap();
+                        Ok(base_env_versions
+                            .into_iter()
+                            .filter(|name_version| name_version.is_some())
+                            .map(|name_version| regex.captures(name_version.unwrap()))
+                            .filter(|captured_name_version| captured_name_version.is_some())
+                            .map(|captured_name_version| {
+                                if let Some(captured_name_version) = captured_name_version {
+                                    (
+                                        captured_name_version["name"].to_owned(),
+                                        captured_name_version["version"].to_owned(),
+                                    )
+                                } else {
+                                    panic!("Could not read captured name/version");
+                                }
+                            })
+                            .collect())
+                    }
+                    Err(obs_env_err) => Err(obs_env_err),
+                }
             }
-            Err(obs_env_err) => Err(obs_env_err),
+            Err(obs_env_err) => Err(ObsEnvError::ERROR(obs_env_err.to_string())),
         }
     }
 
@@ -477,9 +480,7 @@ mod tests {
         let _shared = REPO_ACCESS.lock().unwrap();
         let obs_env = ObservingEnvironment::with_destination(".");
 
-        obs_env.update_base_env_source("main").unwrap();
-
-        let base_env_versions = obs_env.get_base_env_versions().unwrap();
+        let base_env_versions = obs_env.get_base_env_versions("main").unwrap();
 
         for (repo, _) in obs_env.repositories {
             assert!(base_env_versions.contains_key(&repo))

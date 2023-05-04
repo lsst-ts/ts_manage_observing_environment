@@ -129,17 +129,19 @@ where
                 }
             }
         }
-        Action::ShowOriginalVersions => match obs_env.get_base_env_versions() {
-            Ok(base_env_versions) => {
-                log::info!("Base Environment versions:");
-                for (name, version) in base_env_versions.iter() {
-                    log::info!("{name}: {version}");
+        Action::ShowOriginalVersions => {
+            match obs_env.get_base_env_versions(config.get_base_env_source_repo()) {
+                Ok(base_env_versions) => {
+                    log::info!("Base Environment versions:");
+                    for (name, version) in base_env_versions.iter() {
+                        log::info!("{name}: {version}");
+                    }
+                }
+                Err(error) => {
+                    log::error!("{error:?}");
                 }
             }
-            Err(error) => {
-                log::error!("{error:?}");
-            }
-        },
+        }
         Action::CheckoutBranch => {
             obs_env.checkout_branch(config.get_repository_name(), config.get_branch_name())?;
         }
