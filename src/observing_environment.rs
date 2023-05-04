@@ -125,8 +125,8 @@ impl ObservingEnvironment {
     }
 
     /// Reset all repositories to their official version.
-    pub fn reset_base_environment(&self) -> Result<(), Vec<ObsEnvError>> {
-        let update_base_env_res = self.update_base_env_source();
+    pub fn reset_base_environment(&self, base_env_branch: &str) -> Result<(), Vec<ObsEnvError>> {
+        let update_base_env_res = self.update_base_env_source(base_env_branch);
 
         match update_base_env_res {
             Ok(_) => match self.get_base_env_versions() {
@@ -178,15 +178,17 @@ impl ObservingEnvironment {
     }
 
     /// Update the base environment source file.
-    fn update_base_env_source(&self) -> Result<(), Error> {
+    fn update_base_env_source(&self, base_env_branch: &str) -> Result<(), Error> {
         let base_env_source_repo = self.get_base_env_source_repo()?;
 
         let mut remote = base_env_source_repo.find_remote("origin")?;
 
         remote.fetch(&["origin"], None, None)?;
 
-        let branch_main_remote =
-            base_env_source_repo.find_branch("/origin/main", git2::BranchType::Remote)?;
+        let branch_main_remote = base_env_source_repo.find_branch(
+            &format!("/origin/{base_env_branch}"),
+            git2::BranchType::Remote,
+        )?;
 
         let commit = branch_main_remote.get().peel_to_commit()?;
 
@@ -463,7 +465,7 @@ mod tests {
 
         let obs_env = ObservingEnvironment::with_destination(".");
 
-        obs_env.update_base_env_source().unwrap();
+        obs_env.update_base_env_source("main").unwrap();
 
         assert!(Path::new(&obs_env.destination)
             .join(obs_env.base_env_source_repo)
@@ -475,7 +477,7 @@ mod tests {
         let _shared = REPO_ACCESS.lock().unwrap();
         let obs_env = ObservingEnvironment::with_destination(".");
 
-        obs_env.update_base_env_source().unwrap();
+        obs_env.update_base_env_source("main").unwrap();
 
         let base_env_versions = obs_env.get_base_env_versions().unwrap();
 

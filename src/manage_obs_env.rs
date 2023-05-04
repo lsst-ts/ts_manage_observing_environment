@@ -23,6 +23,10 @@ pub struct ManageObsEnv {
     /// option.
     #[arg(long = "branch-name", default_value = "")]
     branch_name: String,
+    /// Name of the branch to checkout when running the "CheckoutBranch"
+    /// option.
+    #[arg(long = "base-env-branch-name", default_value = "main")]
+    base_env_branch_name: String,
 }
 pub trait ManageObsEnvCli {
     fn get_action(&self) -> Result<&Action, Box<dyn Error>>;
@@ -30,6 +34,7 @@ pub trait ManageObsEnvCli {
     fn get_env_path(&self) -> &str;
     fn get_branch_name(&self) -> &str;
     fn get_repository_name(&self) -> &str;
+    fn get_base_env_source_repo(&self) -> &str;
 }
 
 impl ManageObsEnvCli for ManageObsEnv {
@@ -61,6 +66,9 @@ impl ManageObsEnvCli for ManageObsEnv {
     }
     fn get_repository_name(&self) -> &str {
         &self.repository
+    }
+    fn get_base_env_source_repo(&self) -> &str {
+        &self.base_env_branch_name
     }
 }
 
@@ -102,7 +110,7 @@ where
         }
         Action::Reset => {
             log::info!("Resetting Observing environment...");
-            if let Err(error) = obs_env.reset_base_environment() {
+            if let Err(error) = obs_env.reset_base_environment(config.get_base_env_source_repo()) {
                 log::error!("Error resetting {} repositories.", error.len());
                 for err in error {
                     log::error!("{:?}", err);
