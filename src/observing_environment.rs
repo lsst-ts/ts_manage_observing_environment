@@ -178,7 +178,7 @@ impl ObservingEnvironment {
 
         let mut remote = base_env_source_repo.find_remote("origin")?;
 
-        remote.fetch(&["origin"], None, None)?;
+        remote.fetch(&[base_env_branch], None, None)?;
 
         let branch_main_remote = base_env_source_repo.find_branch(
             &format!("/origin/{base_env_branch}"),
