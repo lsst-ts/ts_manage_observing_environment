@@ -14,7 +14,7 @@ pub struct ManageObsEnv {
     #[arg(value_enum, long = "log-level", default_value = "debug")]
     log_level: LogLevel,
     /// Path to the environment.
-    #[arg(long = "env-path", default_value = "/obs-env")]
+    #[arg(long = "env-path", default_value = "/net/obs-env/auto_base_packages")]
     env_path: String,
     /// Repository to act on (for actions on individual repos).
     #[arg(long = "repository", default_value = "")]
