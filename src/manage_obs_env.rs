@@ -1,5 +1,5 @@
 use crate::{error::ObsEnvError, observing_environment::ObservingEnvironment};
-use clap::{Parser, ValueEnum};
+use clap::{Parser};
 use log;
 use std::error::Error;
 
