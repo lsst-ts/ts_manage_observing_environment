@@ -2,7 +2,7 @@ use crate::error::ObsEnvError;
 use git2::{build::CheckoutBuilder, DescribeOptions, Error, FetchOptions, Repository};
 use regex::Regex;
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fs::{create_dir, File},
     io::{BufRead, BufReader},
     path::Path,
@@ -13,7 +13,7 @@ const VALID_VERSION: &str = r"^(?P<major>[0-9]*)\.(?P<minor>[0-9]*)\.(?P<patch>[
 
 pub struct ObservingEnvironment {
     /// List of repositories that belong to the observing environment.
-    repositories: HashMap<String, String>,
+    repositories: BTreeMap<String, String>,
     /// Organzation url for the base env sourve repository
     base_env_source_org: String,
     /// Repository with the base environment version definitions
@@ -28,7 +28,7 @@ pub struct ObservingEnvironment {
 impl Default for ObservingEnvironment {
     fn default() -> ObservingEnvironment {
         ObservingEnvironment {
-            repositories: HashMap::from_iter([
+            repositories: BTreeMap::from_iter([
                 (
                     "atmospec".to_owned(),
                     r"https://github.com/lsst/".to_owned(),
@@ -213,7 +213,7 @@ impl ObservingEnvironment {
     pub fn get_base_env_versions(
         &self,
         base_env_branch: &str,
-    ) -> Result<HashMap<String, String>, ObsEnvError> {
+    ) -> Result<BTreeMap<String, String>, ObsEnvError> {
         match self.update_base_env_source(base_env_branch) {
             Ok(_) => {
                 match self.load_base_env_def_file() {
@@ -253,7 +253,7 @@ impl ObservingEnvironment {
     }
 
     /// Get current package versions.
-    pub fn get_current_env_versions(&self) -> HashMap<String, Result<String, ObsEnvError>> {
+    pub fn get_current_env_versions(&self) -> BTreeMap<String, Result<String, ObsEnvError>> {
         self.repositories
             .iter()
             .map(|(repo_name, _)| (repo_name.to_owned(), self.get_current_version(repo_name)))
