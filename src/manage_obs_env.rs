@@ -1,11 +1,11 @@
 use crate::{error::ObsEnvError, observing_environment::ObservingEnvironment};
-use clap::{Parser};
+use clap::Parser;
 use log;
 use std::error::Error;
 
 /// Manage observing environment.
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None, name = "manage_obs_env")]
 pub struct ManageObsEnv {
     /// Which action to execute?
     #[arg(value_enum, long = "action")]
@@ -17,8 +17,8 @@ pub struct ManageObsEnv {
     #[arg(long = "env-path", default_value = "/net/obs-env/auto_base_packages")]
     env_path: String,
     /// Repository to act on (for actions on individual repos).
-    #[arg(long = "repository", default_value = "")]
-    repository: String,
+    #[arg(value_enum, long = "repository")]
+    repository: Option<Repos>,
     /// Name of the branch to checkout when running the "CheckoutBranch"
     /// option.
     #[arg(long = "branch-name", default_value = "")]
@@ -41,16 +41,13 @@ impl ManageObsEnvCli for ManageObsEnv {
     fn get_action(&self) -> Result<&Action, Box<dyn Error>> {
         match self.action {
             Action::CheckoutBranch => {
-                if self.repository.len() == 0 {
-                    return Err(Box::new(ObsEnvError::ERROR(
+                if self.repository.is_none() {
+                    Err(Box::new(ObsEnvError::ERROR(
                         "Checkout branch action requires a repository, none given".to_owned(),
-                    )));
-                } else if self.branch_name.len() == 0 {
-                    return Err(Box::new(ObsEnvError::ERROR(
-                        "Checkout branch action requires a branch name, none given".to_owned(),
-                    )));
+                    )))
+                } else {
+                    Ok(&self.action)
                 }
-                Ok(&self.action)
             }
             _ => Ok(&self.action),
         }
@@ -65,7 +62,21 @@ impl ManageObsEnvCli for ManageObsEnv {
         &self.branch_name
     }
     fn get_repository_name(&self) -> &str {
-        &self.repository
+        if let Some(repository) = &self.repository {
+            match repository {
+                Repos::TsObservatoryControl => "ts_observatory_control",
+                Repos::Atmospec => "atmospec",
+                Repos::Spectractor => "Spectractor",
+                Repos::SummitExtras => "summit_extras",
+                Repos::SummitUtils => "summit_utils",
+                Repos::TsExternalscripts => "ts_externalscripts",
+                Repos::TsObservingUtilities => "ts_observing_utilities",
+                Repos::TsStandardscripts => "ts_standardscripts",
+                Repos::TsWep => "ts_wep",
+            }
+        } else {
+            ""
+        }
     }
     fn get_base_env_source_repo(&self) -> &str {
         &self.base_env_branch_name
@@ -175,4 +186,18 @@ pub enum LogLevel {
     Info,
     Warn,
     Error,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+#[clap(rename_all = "snake_case")]
+pub enum Repos {
+    TsObservatoryControl,
+    Atmospec,
+    Spectractor,
+    SummitExtras,
+    SummitUtils,
+    TsExternalscripts,
+    TsObservingUtilities,
+    TsStandardscripts,
+    TsWep,
 }
