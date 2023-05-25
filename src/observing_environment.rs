@@ -220,8 +220,8 @@ impl ObservingEnvironment {
                     Ok(base_env_def) => {
                         let base_env_versions: Vec<Option<&String>> = self
                             .repositories
-                            .iter()
-                            .map(|(repo_name, _)| {
+                            .keys()
+                            .map(|repo_name| {
                                 base_env_def.iter().find(|line| line.starts_with(repo_name))
                             })
                             .collect();
@@ -255,9 +255,19 @@ impl ObservingEnvironment {
     /// Get current package versions.
     pub fn get_current_env_versions(&self) -> BTreeMap<String, Result<String, ObsEnvError>> {
         self.repositories
-            .iter()
-            .map(|(repo_name, _)| (repo_name.to_owned(), self.get_current_version(repo_name)))
+            .keys()
+            .map(|repo_name| (repo_name.to_owned(), self.get_current_version(repo_name)))
             .collect()
+    }
+
+    /// Get current cycle/revision.
+    pub fn get_cycle_revision(&self, base_env_branch: &str) -> Result<String, ObsEnvError> {
+        match self.update_base_env_source(base_env_branch) {
+            Ok(_) => {
+                unimplemented!()
+            }
+            Err(obs_env_err) => Err(ObsEnvError::ERROR(obs_env_err.to_string())),
+        }
     }
 
     fn get_current_version(&self, repo_name: &str) -> Result<String, ObsEnvError> {
@@ -265,7 +275,7 @@ impl ObservingEnvironment {
             Ok(repository) => {
                 let mut opts = DescribeOptions::new();
 
-                match repository.describe(&opts.show_commit_oid_as_fallback(true)) {
+                match repository.describe(opts.show_commit_oid_as_fallback(true)) {
                     Ok(description) => match description.format(None) {
                         Ok(description) => Ok(description),
                         Err(error) => Err(ObsEnvError::GIT(format!(
@@ -297,8 +307,7 @@ impl ObservingEnvironment {
                 Ok(BufReader::new(file)
                     .lines()
                     .into_iter()
-                    .filter(|line| line.is_ok())
-                    .map(|line| line.unwrap())
+                    .filter_map(|line| line.ok())
                     .collect())
                 // Note it is safe to unwrap inside the map because of the filter.
             }
@@ -354,8 +363,8 @@ impl ObservingEnvironment {
 
         if version_regex.is_match(version) {
             format!("v{version}")
-                .replace("a", ".alpha.")
-                .replace("b", ".beta.")
+                .replace('a', ".alpha.")
+                .replace('b', ".beta.")
                 .replace("rc", ".rc.")
         } else {
             version.to_owned()
@@ -411,7 +420,7 @@ fn checkout_branch(repository: &Repository, spec: &str, branch_name: &str) -> Re
     let object = repository.revparse_single(spec)?;
 
     repository.branch(branch_name, &object.peel_to_commit().unwrap(), true)?;
-    repository.set_head(&spec)?;
+    repository.set_head(spec)?;
     let mut checkout_build = CheckoutBuilder::new();
     repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
     Ok(())
