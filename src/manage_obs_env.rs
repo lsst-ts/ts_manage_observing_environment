@@ -1,4 +1,4 @@
-use crate::{error::ObsEnvError, observing_environment::ObservingEnvironment};
+use crate::{error::ObsEnvError, observing_environment::ObservingEnvironment, repos::Repos};
 use clap::Parser;
 use log;
 use std::error::Error;
@@ -63,17 +63,7 @@ impl ManageObsEnvCli for ManageObsEnv {
     }
     fn get_repository_name(&self) -> &str {
         if let Some(repository) = &self.repository {
-            match repository {
-                Repos::TsObservatoryControl => "ts_observatory_control",
-                Repos::Atmospec => "atmospec",
-                Repos::Spectractor => "Spectractor",
-                Repos::SummitExtras => "summit_extras",
-                Repos::SummitUtils => "summit_utils",
-                Repos::TsExternalscripts => "ts_externalscripts",
-                Repos::TsObservingUtilities => "ts_observing_utilities",
-                Repos::TsStandardscripts => "ts_standardscripts",
-                Repos::TsWep => "ts_wep",
-            }
+            repository.get_name()
         } else {
             ""
         }
@@ -186,18 +176,4 @@ pub enum LogLevel {
     Info,
     Warn,
     Error,
-}
-
-#[derive(clap::ValueEnum, Clone, Debug)]
-#[clap(rename_all = "snake_case")]
-pub enum Repos {
-    TsObservatoryControl,
-    Atmospec,
-    Spectractor,
-    SummitExtras,
-    SummitUtils,
-    TsExternalscripts,
-    TsObservingUtilities,
-    TsStandardscripts,
-    TsWep,
 }
