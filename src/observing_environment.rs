@@ -1,5 +1,6 @@
 use crate::error::ObsEnvError;
 use git2::{build::CheckoutBuilder, DescribeOptions, Error, FetchOptions, Repository};
+use log::debug;
 use regex::Regex;
 use std::{
     collections::BTreeMap,
@@ -150,16 +151,13 @@ impl ObservingEnvironment {
     pub fn checkout_branch(&self, repo_name: &str, branch_name: &str) -> Result<(), ObsEnvError> {
         if self.repositories.contains_key(repo_name) {
             match Repository::open(Path::new(&self.destination).join(repo_name)) {
-                Ok(repository) => {
-                    let spec = format!("refs/remotes/origin/{branch_name}");
-                    match checkout_branch(&repository, &spec, branch_name) {
-                        Ok(_) => Ok(()),
-                        Err(error) => Err(ObsEnvError::GIT(format!(
-                            "Failed to checkout branch {branch_name}: {}",
-                            error.message()
-                        ))),
-                    }
-                }
+                Ok(repository) => match checkout_branch(&repository, branch_name) {
+                    Ok(_) => Ok(()),
+                    Err(error) => Err(ObsEnvError::GIT(format!(
+                        "Failed to checkout branch {branch_name}: {}",
+                        error.message()
+                    ))),
+                },
                 Err(error) => Err(ObsEnvError::GIT(format!(
                     "Failed to open repository {repo_name}: {}",
                     error.message()
@@ -275,7 +273,7 @@ impl ObservingEnvironment {
             Ok(repository) => {
                 let mut opts = DescribeOptions::new();
 
-                match repository.describe(opts.show_commit_oid_as_fallback(true)) {
+                match repository.describe(opts.describe_tags()) {
                     Ok(description) => match description.format(None) {
                         Ok(description) => Ok(description),
                         Err(error) => Err(ObsEnvError::GIT(format!(
@@ -283,10 +281,19 @@ impl ObservingEnvironment {
                             error.message()
                         ))),
                     },
-                    Err(error) => Err(ObsEnvError::GIT(format!(
-                        "Can't retrieve {repo_name} HEAD: {}",
-                        error.message()
-                    ))),
+                    Err(_) => match repository.describe(opts.show_commit_oid_as_fallback(true)) {
+                        Ok(description) => match description.format(None) {
+                            Ok(description) => Ok(description),
+                            Err(error) => Err(ObsEnvError::GIT(format!(
+                                "Error describing {repo_name}: {}",
+                                error.message()
+                            ))),
+                        },
+                        Err(error) => Err(ObsEnvError::GIT(format!(
+                            "Error describing {repo_name}: {}",
+                            error.message()
+                        ))),
+                    },
                 }
             }
             Err(error) => Err(ObsEnvError::GIT(format!(
@@ -391,9 +398,8 @@ impl ObservingEnvironment {
             Ok(object) => checkout_tag(&repository, version, object, &spec),
             Err(_) => {
                 // Fallback to try finding a branch
-                let spec = "refs/remotes/origin/".to_owned() + tag;
-                log::trace!("Failed to check tag, trying it as a branch: {spec}");
-                checkout_branch(&repository, &spec, version)
+                log::trace!("Failed to check tag, trying it as a branch: {version}");
+                checkout_branch(&repository, version)
             }
         }
     }
@@ -412,17 +418,47 @@ fn checkout_tag(
     Ok(())
 }
 
-fn checkout_branch(repository: &Repository, spec: &str, branch_name: &str) -> Result<(), Error> {
+fn checkout_branch(repository: &Repository, branch_name: &str) -> Result<(), Error> {
     repository
         .find_remote("origin")?
         .fetch(&[branch_name], None, None)?;
 
-    let object = repository.revparse_single(spec)?;
+    // repository.branch(branch_name, &object.peel_to_commit().unwrap(), true)?;
+    // repository.set_head(spec)?;
+    // let mut checkout_build = CheckoutBuilder::new();
+    // repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
 
-    repository.branch(branch_name, &object.peel_to_commit().unwrap(), true)?;
-    repository.set_head(spec)?;
-    let mut checkout_build = CheckoutBuilder::new();
-    repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
+    let remote_branch_name = format!("origin/{branch_name}");
+    let branch = repository.find_branch(&remote_branch_name, git2::BranchType::Remote)?;
+
+    let branch_reference = branch.into_reference();
+    let commit = branch_reference.peel_to_commit()?;
+
+    let local_branch = repository.branch(&branch_name, &commit, true)?;
+
+    if let Some(upstream_name) = branch_reference.name() {
+        debug!("Upstream name: {upstream_name}");
+        let object = repository.revparse_single(upstream_name)?;
+        let mut checkout_build = CheckoutBuilder::new();
+        repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
+        // local_branch.set_upstream(Some(upstream_name))?;
+        if let Some(refname) = local_branch.get().name() {
+            repository.set_head(refname)?;
+        } else {
+            return Err(Error::new(
+                git2::ErrorCode::Ambiguous,
+                git2::ErrorClass::FetchHead,
+                "Error",
+            ));
+        }
+    } else {
+        return Err(Error::new(
+            git2::ErrorCode::Ambiguous,
+            git2::ErrorClass::FetchHead,
+            "Error",
+        ));
+    }
+
     Ok(())
 }
 
