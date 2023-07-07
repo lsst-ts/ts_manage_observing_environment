@@ -1,6 +1,6 @@
 use crate::error::ObsEnvError;
 use git2::{build::CheckoutBuilder, DescribeOptions, Error, FetchOptions, Repository};
-use log::debug;
+use log::{debug, trace};
 use regex::Regex;
 use std::{
     collections::BTreeMap,
@@ -434,7 +434,22 @@ fn checkout_branch(repository: &Repository, branch_name: &str) -> Result<(), Err
     let branch_reference = branch.into_reference();
     let commit = branch_reference.peel_to_commit()?;
 
+    trace!("Checking out temporary branch");
+    let temp_branch = repository.branch("temp", &commit, true)?;
+
+    if let Some(temp_refname) = temp_branch.get().name() {
+        repository.set_head(temp_refname)?;
+    } else {
+        return Err(Error::new(
+            git2::ErrorCode::Ambiguous,
+            git2::ErrorClass::FetchHead,
+            "Error",
+        ));
+    }
+
+    trace!("Checking out branch {branch_name}");
     let local_branch = repository.branch(&branch_name, &commit, true)?;
+    trace!("Branch {branch_name} checked out ok.");
 
     if let Some(upstream_name) = branch_reference.name() {
         debug!("Upstream name: {upstream_name}");
