@@ -10,6 +10,7 @@ pub enum Repos {
     TsObservingUtilities,
     TsStandardscripts,
     TsWep,
+    TsConfigOCS,
 }
 
 impl Repos {
@@ -24,6 +25,7 @@ impl Repos {
             Repos::TsObservingUtilities => "ts_observing_utilities",
             Repos::TsStandardscripts => "ts_standardscripts",
             Repos::TsWep => "ts_wep",
+            Repos::TsConfigOCS => "ts_config_ocs",
         }
     }
 }
