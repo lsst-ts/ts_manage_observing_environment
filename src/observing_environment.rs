@@ -344,7 +344,7 @@ impl ObservingEnvironment {
     ///     1.0.0a1, alpha release with release number 1.
     ///     1.0.0b5, beta release with release number 5.
     ///     1.0.0rc3, release candidate with release number 3.
-    fn reset_index_to_version(&self, repo: &str, version: &str) -> Result<(), ObsEnvError> {
+    pub fn reset_index_to_version(&self, repo: &str, version: &str) -> Result<(), ObsEnvError> {
         log::debug!("Resetting {repo} to {version}");
         if let Ok(repository) = Repository::open(Path::new(&self.destination).join(repo)) {
             let tag = ObservingEnvironment::expand_version_to_tag(version);
