@@ -19,12 +19,12 @@ pub struct ManageObsEnv {
     /// Repository to act on (for actions on individual repos).
     #[arg(value_enum, long = "repository")]
     repository: Option<Repos>,
-    /// Name of the branch to checkout when running the "CheckoutBranch"
-    /// option.
+    /// Name of the branch or version to checkout when running the "CheckoutBranch"
+    /// or "CheckoutVersion" action.
     #[arg(long = "branch-name", default_value = "")]
     branch_name: String,
-    /// Name of the branch to checkout when running the "CheckoutBranch"
-    /// option.
+    /// Name of the branch to checkout when running the "Reset"
+    /// action.
     #[arg(long = "base-env-branch-name", default_value = "main")]
     base_env_branch_name: String,
 }
@@ -33,6 +33,7 @@ pub trait ManageObsEnvCli {
     fn get_log_level(&self) -> &LogLevel;
     fn get_env_path(&self) -> &str;
     fn get_branch_name(&self) -> &str;
+    fn get_version(&self) -> &str;
     fn get_repository_name(&self) -> &str;
     fn get_base_env_source_repo(&self) -> &str;
 }
@@ -59,6 +60,9 @@ impl ManageObsEnvCli for ManageObsEnv {
         &self.env_path
     }
     fn get_branch_name(&self) -> &str {
+        &self.branch_name
+    }
+    fn get_version(&self) -> &str {
         &self.branch_name
     }
     fn get_repository_name(&self) -> &str {
@@ -146,6 +150,9 @@ where
         Action::CheckoutBranch => {
             obs_env.checkout_branch(config.get_repository_name(), config.get_branch_name())?;
         }
+        Action::CheckoutVersion => {
+            obs_env.reset_index_to_version(config.get_repository_name(), config.get_version())?;
+        }
     };
     Ok(())
 }
@@ -167,6 +174,8 @@ pub enum Action {
     ShowOriginalVersions,
     /// Checkout a branch in a repository.
     CheckoutBranch,
+    /// Checkout a version in a repository.
+    CheckoutVersion,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
