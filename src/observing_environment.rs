@@ -1,19 +1,20 @@
 use crate::error::ObsEnvError;
-use git2::{Error, Repository};
+use git2::{build::CheckoutBuilder, DescribeOptions, Error, FetchOptions, Repository};
+use log::{debug, trace};
 use regex::Regex;
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fs::{create_dir, File},
     io::{BufRead, BufReader},
     path::Path,
 };
 
 const REPO_VERSION_REGEXP: &str = r"(?P<name>[a-zA-Z0-9_]*)=(?P<version>[a-zA-Z0-9._]*)";
-const VALID_VERSION: &str = r"(?P<major>[0-9]*)\.(?P<minor>[0-9]*)\.(?P<patch>[0-9]*)";
+const VALID_VERSION: &str = r"^(?P<major>[0-9]*)\.(?P<minor>[0-9]*)\.(?P<patch>[0-9]*)";
 
 pub struct ObservingEnvironment {
     /// List of repositories that belong to the observing environment.
-    repositories: HashMap<String, String>,
+    repositories: BTreeMap<String, String>,
     /// Organzation url for the base env sourve repository
     base_env_source_org: String,
     /// Repository with the base environment version definitions
@@ -28,7 +29,7 @@ pub struct ObservingEnvironment {
 impl Default for ObservingEnvironment {
     fn default() -> ObservingEnvironment {
         ObservingEnvironment {
-            repositories: HashMap::from_iter([
+            repositories: BTreeMap::from_iter([
                 (
                     "atmospec".to_owned(),
                     r"https://github.com/lsst/".to_owned(),
@@ -124,43 +125,63 @@ impl ObservingEnvironment {
             .collect()
     }
 
-    /// Reset all repositories to they official version.
-    pub fn reset_base_environment(&self) -> Result<(), Vec<ObsEnvError>> {
-        let update_base_env_res = self.update_base_env_source();
+    /// Reset all repositories to their official version.
+    pub fn reset_base_environment(&self, base_env_branch: &str) -> Result<(), Vec<ObsEnvError>> {
+        match self.get_base_env_versions(base_env_branch) {
+            Ok(obs_env_versions) => {
+                let reset_result: Vec<ObsEnvError> = obs_env_versions
+                    .into_iter()
+                    .map(|(repo, version)| self.reset_index_to_version(&repo, &version))
+                    .into_iter()
+                    .filter(|result| result.is_err())
+                    .map(|err| err.unwrap_err())
+                    .collect();
 
-        match update_base_env_res {
-            Ok(_) => match self.get_base_env_versions() {
-                Ok(obs_env_versions) => {
-                    let reset_result: Vec<ObsEnvError> = obs_env_versions
-                        .into_iter()
-                        .map(|(repo, version)| self.reset_index_to_version(&repo, &version))
-                        .into_iter()
-                        .filter(|result| result.is_err())
-                        .map(|err| err.unwrap_err())
-                        .collect();
-
-                    if reset_result.is_empty() {
-                        Ok(())
-                    } else {
-                        Err(reset_result)
-                    }
+                if reset_result.is_empty() {
+                    Ok(())
+                } else {
+                    Err(reset_result)
                 }
-                Err(err_get_base_env_versions) => Err(vec![err_get_base_env_versions]),
-            },
-            Err(error) => Err(vec![ObsEnvError::GIT(error.message().to_owned())]),
+            }
+            Err(err_get_base_env_versions) => Err(vec![err_get_base_env_versions]),
+        }
+    }
+
+    /// Checkout branch on specified repository.
+    pub fn checkout_branch(&self, repo_name: &str, branch_name: &str) -> Result<(), ObsEnvError> {
+        if self.repositories.contains_key(repo_name) {
+            match Repository::open(Path::new(&self.destination).join(repo_name)) {
+                Ok(repository) => match checkout_branch(&repository, branch_name) {
+                    Ok(_) => Ok(()),
+                    Err(error) => Err(ObsEnvError::GIT(format!(
+                        "Failed to checkout branch {branch_name}: {}",
+                        error.message()
+                    ))),
+                },
+                Err(error) => Err(ObsEnvError::GIT(format!(
+                    "Failed to open repository {repo_name}: {}",
+                    error.message()
+                ))),
+            }
+        } else {
+            Err(ObsEnvError::ERROR(format!(
+                "Repository {repo_name} not in the list of managed repositories."
+            )))
         }
     }
 
     /// Update the base environment source file.
-    fn update_base_env_source(&self) -> Result<(), Error> {
+    fn update_base_env_source(&self, base_env_branch: &str) -> Result<(), Error> {
         let base_env_source_repo = self.get_base_env_source_repo()?;
 
         let mut remote = base_env_source_repo.find_remote("origin")?;
 
-        remote.fetch(&["origin"], None, None)?;
+        remote.fetch(&[base_env_branch], None, None)?;
 
-        let branch_main_remote =
-            base_env_source_repo.find_branch("/origin/main", git2::BranchType::Remote)?;
+        let branch_main_remote = base_env_source_repo.find_branch(
+            &format!("/origin/{base_env_branch}"),
+            git2::BranchType::Remote,
+        )?;
 
         let commit = branch_main_remote.get().peel_to_commit()?;
 
@@ -187,37 +208,98 @@ impl ObservingEnvironment {
     ///
     /// This method will parse the base_env_def_file (e.g. cycle/cycle.env) to
     /// get the versions of the base env packages.
-    fn get_base_env_versions(&self) -> Result<HashMap<String, String>, ObsEnvError> {
-        match self.load_base_env_def_file() {
-            Ok(base_env_def) => {
-                let base_env_versions: Vec<Option<&String>> = self
-                    .repositories
-                    .iter()
-                    .map(|(repo_name, _)| {
-                        base_env_def.iter().find(|line| line.starts_with(repo_name))
-                    })
-                    .collect();
-                // This should never fail because we know REPO_VERSION_REGEXP is
-                // valid.
-                let regex = Regex::new(REPO_VERSION_REGEXP).unwrap();
-                Ok(base_env_versions
-                    .into_iter()
-                    .filter(|name_version| name_version.is_some())
-                    .map(|name_version| regex.captures(name_version.unwrap()))
-                    .filter(|captured_name_version| captured_name_version.is_some())
-                    .map(|captured_name_version| {
-                        if let Some(captured_name_version) = captured_name_version {
-                            (
-                                captured_name_version["name"].to_owned(),
-                                captured_name_version["version"].to_owned(),
-                            )
-                        } else {
-                            panic!("Could not read captured name/version");
-                        }
-                    })
-                    .collect())
+    pub fn get_base_env_versions(
+        &self,
+        base_env_branch: &str,
+    ) -> Result<BTreeMap<String, String>, ObsEnvError> {
+        match self.update_base_env_source(base_env_branch) {
+            Ok(_) => {
+                match self.load_base_env_def_file() {
+                    Ok(base_env_def) => {
+                        let base_env_versions: Vec<Option<&String>> = self
+                            .repositories
+                            .keys()
+                            .map(|repo_name| {
+                                base_env_def.iter().find(|line| line.starts_with(repo_name))
+                            })
+                            .collect();
+                        // This should never fail because we know REPO_VERSION_REGEXP is
+                        // valid.
+                        let regex = Regex::new(REPO_VERSION_REGEXP).unwrap();
+                        Ok(base_env_versions
+                            .into_iter()
+                            .filter(|name_version| name_version.is_some())
+                            .map(|name_version| regex.captures(name_version.unwrap()))
+                            .filter(|captured_name_version| captured_name_version.is_some())
+                            .map(|captured_name_version| {
+                                if let Some(captured_name_version) = captured_name_version {
+                                    (
+                                        captured_name_version["name"].to_owned(),
+                                        captured_name_version["version"].to_owned(),
+                                    )
+                                } else {
+                                    panic!("Could not read captured name/version");
+                                }
+                            })
+                            .collect())
+                    }
+                    Err(obs_env_err) => Err(obs_env_err),
+                }
             }
-            Err(obs_env_err) => Err(obs_env_err),
+            Err(obs_env_err) => Err(ObsEnvError::ERROR(obs_env_err.to_string())),
+        }
+    }
+
+    /// Get current package versions.
+    pub fn get_current_env_versions(&self) -> BTreeMap<String, Result<String, ObsEnvError>> {
+        self.repositories
+            .keys()
+            .map(|repo_name| (repo_name.to_owned(), self.get_current_version(repo_name)))
+            .collect()
+    }
+
+    /// Get current cycle/revision.
+    pub fn get_cycle_revision(&self, base_env_branch: &str) -> Result<String, ObsEnvError> {
+        match self.update_base_env_source(base_env_branch) {
+            Ok(_) => {
+                unimplemented!()
+            }
+            Err(obs_env_err) => Err(ObsEnvError::ERROR(obs_env_err.to_string())),
+        }
+    }
+
+    fn get_current_version(&self, repo_name: &str) -> Result<String, ObsEnvError> {
+        match Repository::open(Path::new(&self.destination).join(repo_name)) {
+            Ok(repository) => {
+                let mut opts = DescribeOptions::new();
+
+                match repository.describe(opts.describe_tags()) {
+                    Ok(description) => match description.format(None) {
+                        Ok(description) => Ok(description),
+                        Err(error) => Err(ObsEnvError::GIT(format!(
+                            "Error describing {repo_name}: {}",
+                            error.message()
+                        ))),
+                    },
+                    Err(_) => match repository.describe(opts.show_commit_oid_as_fallback(true)) {
+                        Ok(description) => match description.format(None) {
+                            Ok(description) => Ok(description),
+                            Err(error) => Err(ObsEnvError::GIT(format!(
+                                "Error describing {repo_name}: {}",
+                                error.message()
+                            ))),
+                        },
+                        Err(error) => Err(ObsEnvError::GIT(format!(
+                            "Error describing {repo_name}: {}",
+                            error.message()
+                        ))),
+                    },
+                }
+            }
+            Err(error) => Err(ObsEnvError::GIT(format!(
+                "Failed to open repository {repo_name}: {}",
+                error.message()
+            ))),
         }
     }
 
@@ -232,8 +314,7 @@ impl ObservingEnvironment {
                 Ok(BufReader::new(file)
                     .lines()
                     .into_iter()
-                    .filter(|line| line.is_ok())
-                    .map(|line| line.unwrap())
+                    .filter_map(|line| line.ok())
                     .collect())
                 // Note it is safe to unwrap inside the map because of the filter.
             }
@@ -263,14 +344,17 @@ impl ObservingEnvironment {
     ///     1.0.0a1, alpha release with release number 1.
     ///     1.0.0b5, beta release with release number 5.
     ///     1.0.0rc3, release candidate with release number 3.
-    fn reset_index_to_version(&self, repo: &str, version: &str) -> Result<(), ObsEnvError> {
+    pub fn reset_index_to_version(&self, repo: &str, version: &str) -> Result<(), ObsEnvError> {
         log::debug!("Resetting {repo} to {version}");
         if let Ok(repository) = Repository::open(Path::new(&self.destination).join(repo)) {
             let tag = ObservingEnvironment::expand_version_to_tag(version);
 
-            match ObservingEnvironment::checkout_tag(repository, tag, version) {
+            match ObservingEnvironment::checkout_tag_or_branch(repository, &tag, version) {
                 Ok(()) => Ok(()),
-                Err(error) => Err(ObsEnvError::GIT(error.message().to_owned())),
+                Err(error) => Err(ObsEnvError::GIT(format!(
+                    "Could not checkout tag or branch for {repo}@{tag}[{version}]: {}",
+                    error.message().to_owned()
+                ))),
             }
         } else {
             Err(ObsEnvError::GIT(format!(
@@ -286,24 +370,111 @@ impl ObservingEnvironment {
 
         if version_regex.is_match(version) {
             format!("v{version}")
-                .replace("a", ".alpha.")
-                .replace("b", ".beta.")
+                .replace('a', ".alpha.")
+                .replace('b', ".beta.")
                 .replace("rc", ".rc.")
         } else {
             version.to_owned()
         }
     }
 
-    fn checkout_tag(repository: Repository, tag: String, version: &str) -> Result<(), Error> {
-        match repository.revparse_single(&("refs/tags/".to_owned() + &tag)) {
-            Ok(object) => {
-                // repository.reset(&object, git2::ResetType::Hard, None)?;
-                repository.branch(version, &object.peel_to_commit().unwrap(), true)?;
-                Ok(())
+    fn checkout_tag_or_branch(
+        repository: Repository,
+        tag: &str,
+        version: &str,
+    ) -> Result<(), Error> {
+        log::trace!("Fetching...");
+        let mut fetch_options = FetchOptions::new();
+        fetch_options.download_tags(git2::AutotagOption::All);
+
+        repository
+            .find_remote("origin")?
+            .fetch(&[""], Some(&mut fetch_options), None)?;
+
+        // Try to find the tag first
+        let spec = "refs/tags/".to_owned() + tag;
+        log::trace!("Checkout spec {spec}");
+        match repository.revparse_single(&spec) {
+            Ok(object) => checkout_tag(&repository, version, object, &spec),
+            Err(_) => {
+                // Fallback to try finding a branch
+                log::trace!("Failed to check tag, trying it as a branch: {version}");
+                checkout_branch(&repository, version)
             }
-            Err(error) => Err(error),
         }
     }
+}
+
+fn checkout_tag(
+    repository: &Repository,
+    version: &str,
+    object: git2::Object,
+    spec: &str,
+) -> Result<(), Error> {
+    repository.branch(version, &object.peel_to_commit().unwrap(), true)?;
+    repository.set_head(spec)?;
+    let mut checkout_build = CheckoutBuilder::new();
+    repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
+    Ok(())
+}
+
+fn checkout_branch(repository: &Repository, branch_name: &str) -> Result<(), Error> {
+    repository
+        .find_remote("origin")?
+        .fetch(&[branch_name], None, None)?;
+
+    // repository.branch(branch_name, &object.peel_to_commit().unwrap(), true)?;
+    // repository.set_head(spec)?;
+    // let mut checkout_build = CheckoutBuilder::new();
+    // repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
+
+    let remote_branch_name = format!("origin/{branch_name}");
+    let branch = repository.find_branch(&remote_branch_name, git2::BranchType::Remote)?;
+
+    let branch_reference = branch.into_reference();
+    let commit = branch_reference.peel_to_commit()?;
+
+    trace!("Checking out temporary branch");
+    let temp_branch = repository.branch("temp", &commit, true)?;
+
+    if let Some(temp_refname) = temp_branch.get().name() {
+        repository.set_head(temp_refname)?;
+    } else {
+        return Err(Error::new(
+            git2::ErrorCode::Ambiguous,
+            git2::ErrorClass::FetchHead,
+            "Error",
+        ));
+    }
+
+    trace!("Checking out branch {branch_name}");
+    let local_branch = repository.branch(&branch_name, &commit, true)?;
+    trace!("Branch {branch_name} checked out ok.");
+
+    if let Some(upstream_name) = branch_reference.name() {
+        debug!("Upstream name: {upstream_name}");
+        let object = repository.revparse_single(upstream_name)?;
+        let mut checkout_build = CheckoutBuilder::new();
+        repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
+        // local_branch.set_upstream(Some(upstream_name))?;
+        if let Some(refname) = local_branch.get().name() {
+            repository.set_head(refname)?;
+        } else {
+            return Err(Error::new(
+                git2::ErrorCode::Ambiguous,
+                git2::ErrorClass::FetchHead,
+                "Error",
+            ));
+        }
+    } else {
+        return Err(Error::new(
+            git2::ErrorCode::Ambiguous,
+            git2::ErrorClass::FetchHead,
+            "Error",
+        ));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -357,7 +528,7 @@ mod tests {
 
         let obs_env = ObservingEnvironment::with_destination(".");
 
-        obs_env.update_base_env_source().unwrap();
+        obs_env.update_base_env_source("main").unwrap();
 
         assert!(Path::new(&obs_env.destination)
             .join(obs_env.base_env_source_repo)
@@ -369,9 +540,7 @@ mod tests {
         let _shared = REPO_ACCESS.lock().unwrap();
         let obs_env = ObservingEnvironment::with_destination(".");
 
-        obs_env.update_base_env_source().unwrap();
-
-        let base_env_versions = obs_env.get_base_env_versions().unwrap();
+        let base_env_versions = obs_env.get_base_env_versions("main").unwrap();
 
         for (repo, _) in obs_env.repositories {
             assert!(base_env_versions.contains_key(&repo))
@@ -387,6 +556,7 @@ mod tests {
         assert!(version_regex.is_match("1.20.3a1"));
         assert!(version_regex.is_match("1.20.3b1"));
         assert!(version_regex.is_match("1.20.3rc1"));
+        assert!(!version_regex.is_match("w.2023.13"));
         assert!(!version_regex.is_match("main"));
         assert!(!version_regex.is_match("develop"));
         assert!(!version_regex.is_match("ticket/DM-12345"));

@@ -1,37 +1,79 @@
-use crate::observing_environment::ObservingEnvironment;
-use clap::{Parser, ValueEnum};
+use crate::{error::ObsEnvError, observing_environment::ObservingEnvironment, repos::Repos};
+use clap::Parser;
 use log;
 use std::error::Error;
 
 /// Manage observing environment.
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None, name = "manage_obs_env")]
 pub struct ManageObsEnv {
     /// Which action to execute?
     #[arg(value_enum, long = "action")]
     action: Action,
     /// Log level.
-    #[arg(value_enum, long = "log-level")]
+    #[arg(value_enum, long = "log-level", default_value = "debug")]
     log_level: LogLevel,
     /// Path to the environment.
-    #[arg(long = "env-path", default_value = "/obs-env")]
+    #[arg(long = "env-path", default_value = "/net/obs-env/auto_base_packages")]
     env_path: String,
+    /// Repository to act on (for actions on individual repos).
+    #[arg(value_enum, long = "repository")]
+    repository: Option<Repos>,
+    /// Name of the branch or version to checkout when running the "CheckoutBranch"
+    /// or "CheckoutVersion" action.
+    #[arg(long = "branch-name", default_value = "")]
+    branch_name: String,
+    /// Name of the branch to checkout when running the "Reset"
+    /// action.
+    #[arg(long = "base-env-branch-name", default_value = "main")]
+    base_env_branch_name: String,
 }
 pub trait ManageObsEnvCli {
-    fn get_action(&self) -> &Action;
+    fn get_action(&self) -> Result<&Action, Box<dyn Error>>;
     fn get_log_level(&self) -> &LogLevel;
     fn get_env_path(&self) -> &str;
+    fn get_branch_name(&self) -> &str;
+    fn get_version(&self) -> &str;
+    fn get_repository_name(&self) -> &str;
+    fn get_base_env_source_repo(&self) -> &str;
 }
 
 impl ManageObsEnvCli for ManageObsEnv {
-    fn get_action(&self) -> &Action {
-        &self.action
+    fn get_action(&self) -> Result<&Action, Box<dyn Error>> {
+        match self.action {
+            Action::CheckoutBranch => {
+                if self.repository.is_none() {
+                    Err(Box::new(ObsEnvError::ERROR(
+                        "Checkout branch action requires a repository, none given".to_owned(),
+                    )))
+                } else {
+                    Ok(&self.action)
+                }
+            }
+            _ => Ok(&self.action),
+        }
     }
     fn get_log_level(&self) -> &LogLevel {
         &self.log_level
     }
     fn get_env_path(&self) -> &str {
         &self.env_path
+    }
+    fn get_branch_name(&self) -> &str {
+        &self.branch_name
+    }
+    fn get_version(&self) -> &str {
+        &self.branch_name
+    }
+    fn get_repository_name(&self) -> &str {
+        if let Some(repository) = &self.repository {
+            repository.get_name()
+        } else {
+            ""
+        }
+    }
+    fn get_base_env_source_repo(&self) -> &str {
+        &self.base_env_branch_name
     }
 }
 
@@ -51,7 +93,7 @@ where
 
     let obs_env = ObservingEnvironment::with_destination(config.get_env_path());
 
-    match config.get_action() {
+    match config.get_action()? {
         Action::Setup => {
             log::info!("Executing Setup...");
 
@@ -73,7 +115,7 @@ where
         }
         Action::Reset => {
             log::info!("Resetting Observing environment...");
-            if let Err(error) = obs_env.reset_base_environment() {
+            if let Err(error) = obs_env.reset_base_environment(config.get_base_env_source_repo()) {
                 log::error!("Error resetting {} repositories.", error.len());
                 for err in error {
                     log::error!("{:?}", err);
@@ -82,8 +124,35 @@ where
                 log::info!("All repositories set to they base versions.");
             }
         }
-        Action::ShowCurrentVersions => log::info!("Executing ShowCurrentVersions..."),
-        Action::ShowOriginalVersions => log::info!("Executing ShowOriginalVersions..."),
+        Action::ShowCurrentVersions => {
+            log::info!("Current environment versions:");
+            let current_versions = obs_env.get_current_env_versions();
+            for (name, version) in current_versions.iter() {
+                match version {
+                    Ok(version) => log::info!("{name}: {version}"),
+                    Err(error) => log::error!("{name}: {error:?}"),
+                }
+            }
+        }
+        Action::ShowOriginalVersions => {
+            match obs_env.get_base_env_versions(config.get_base_env_source_repo()) {
+                Ok(base_env_versions) => {
+                    log::info!("Base Environment versions:");
+                    for (name, version) in base_env_versions.iter() {
+                        log::info!("{name}: {version}");
+                    }
+                }
+                Err(error) => {
+                    log::error!("{error:?}");
+                }
+            }
+        }
+        Action::CheckoutBranch => {
+            obs_env.checkout_branch(config.get_repository_name(), config.get_branch_name())?;
+        }
+        Action::CheckoutVersion => {
+            obs_env.reset_index_to_version(config.get_repository_name(), config.get_version())?;
+        }
     };
     Ok(())
 }
@@ -103,6 +172,10 @@ pub enum Action {
     ShowCurrentVersions,
     /// Show original versions.
     ShowOriginalVersions,
+    /// Checkout a branch in a repository.
+    CheckoutBranch,
+    /// Checkout a version in a repository.
+    CheckoutVersion,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
