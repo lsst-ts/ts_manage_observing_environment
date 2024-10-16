@@ -1,7 +1,17 @@
-use crate::{error::ObsEnvError, observing_environment::ObservingEnvironment, repos::Repos};
+use crate::{
+    error::ObsEnvError,
+    observing_environment::ObservingEnvironment,
+    repos::Repos,
+    sasquatch::{
+        create_topic::create_topics,
+        log_summary::{get_payload, ActionData, AvroSchema, Payload, Summary},
+    },
+};
 use clap::Parser;
 use log;
-use std::error::Error;
+use reqwest;
+use serde::ser::Serialize;
+use std::{collections::BTreeMap, env, error::Error, fmt::Debug};
 
 /// Manage observing environment.
 #[derive(Parser, Debug)]
@@ -109,6 +119,11 @@ where
                     Err(error) => log::error!("Failed to clone: {error:?}"),
                 }
             }
+            log::debug!("Sending action.");
+            send_action_data("setup", "", "");
+            log::debug!("Sending summary.");
+            let current_versions = obs_env.get_current_env_versions();
+            send_summary_data(&current_versions);
         }
         Action::PrintConfig => {
             log::info!("{}", obs_env.summarize());
@@ -123,6 +138,11 @@ where
             } else {
                 log::info!("All repositories set to they base versions.");
             }
+            log::debug!("Sending action.");
+            send_action_data("reset", "", "");
+            log::debug!("Sending summary.");
+            let current_versions = obs_env.get_current_env_versions();
+            send_summary_data(&current_versions);
         }
         Action::ShowCurrentVersions => {
             log::info!("Current environment versions:");
@@ -133,6 +153,8 @@ where
                     Err(error) => log::error!("{name}: {error:?}"),
                 }
             }
+            log::debug!("Sending action.");
+            send_action_data("show-current-versions", "", "");
         }
         Action::ShowOriginalVersions => {
             match obs_env.get_base_env_versions(config.get_base_env_source_repo()) {
@@ -146,12 +168,43 @@ where
                     log::error!("{error:?}");
                 }
             }
+            log::debug!("Sending action.");
+            send_action_data("show-original-versions", "", "");
         }
         Action::CheckoutBranch => {
             obs_env.checkout_branch(config.get_repository_name(), config.get_branch_name())?;
+            log::debug!("Sending action.");
+            send_action_data(
+                "checkout-branch",
+                config.get_repository_name(),
+                config.get_branch_name(),
+            );
+            log::debug!("Sending summary.");
+            let current_versions = obs_env.get_current_env_versions();
+            send_summary_data(&current_versions);
         }
         Action::CheckoutVersion => {
             obs_env.reset_index_to_version(config.get_repository_name(), config.get_version())?;
+            log::debug!("Sending action.");
+            send_action_data(
+                "checkout-version",
+                config.get_repository_name(),
+                config.get_version(),
+            );
+            log::debug!("Sending summary.");
+            let current_versions = obs_env.get_current_env_versions();
+            send_summary_data(&current_versions);
+        }
+        Action::CreateTopics => {
+            if let Ok(sasquatch_rest_proxy_url) = env::var("SASQUATCH_REST_PROXY_URL") {
+                create_topics(&sasquatch_rest_proxy_url)?
+            } else {
+                log::error!(
+                    "Environment variable SASQUATCH_REST_PROXY_URL, not set. \
+                    This variable defines the url of the sasquatch service and needs \
+                    to be defined for the topics to be registered."
+                );
+            }
         }
     };
     Ok(())
@@ -176,6 +229,8 @@ pub enum Action {
     CheckoutBranch,
     /// Checkout a version in a repository.
     CheckoutVersion,
+    /// Create topics to log data to sasquatch.
+    CreateTopics,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -185,4 +240,44 @@ pub enum LogLevel {
     Info,
     Warn,
     Error,
+}
+
+fn send_summary_data(current_versions: &BTreeMap<String, Result<String, ObsEnvError>>) {
+    let log_summary = Summary::from_btree_map(current_versions);
+    let payload = get_payload(log_summary);
+    send_payload(&payload, Summary::get_topic_name());
+}
+
+fn send_action_data(action: &str, repository: &str, branch_name: &str) {
+    let action = ActionData::new(action, repository, branch_name);
+    let payload = get_payload(action);
+    send_payload(&payload, ActionData::get_topic_name());
+}
+
+fn send_payload<T: AvroSchema + Debug + Serialize>(payload: &Payload<T>, topic_name: &str) {
+    let client = reqwest::blocking::Client::new();
+    log::debug!("{topic_name}");
+    if let Ok(sasquatch_rest_proxy_url) = env::var("SASQUATCH_REST_PROXY_URL") {
+        if let Ok(res) = client
+            .post(format!(
+                "{sasquatch_rest_proxy_url}/sasquatch-rest-proxy/topics/lsst.obsenv.{topic_name}",
+            ))
+            .header("Content-Type", "application/vnd.kafka.avro.v2+json")
+            .header("Accept", "application/vnd.kafka.v2+json")
+            .json(payload)
+            .send()
+        {
+            if !res.status().is_success() {
+                log::error!("Error updating summary table: {res:?}. {payload:?}");
+            }
+        } else {
+            log::error!("Error sending summary table.");
+        }
+    } else {
+        log::error!(
+            "Environment variable SASQUATCH_REST_PROXY_URL, not set. \
+            This variable defines the url of the sasquatch service and needs \
+            to be defined for actions to be registered."
+        )
+    }
 }
