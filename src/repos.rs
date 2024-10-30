@@ -11,6 +11,8 @@ pub enum Repos {
     TsStandardscripts,
     TsWep,
     TsConfigOCS,
+    TsConfigATTCS,
+    TsConfigMTTCS,
 }
 
 impl Repos {
@@ -26,6 +28,8 @@ impl Repos {
             Repos::TsStandardscripts => "ts_standardscripts",
             Repos::TsWep => "ts_wep",
             Repos::TsConfigOCS => "ts_config_ocs",
+            Repos::TsConfigATTCS => "ts_config_attcs",
+            Repos::TsConfigMTTCS => "ts_config_mttcs",
         }
     }
 }
