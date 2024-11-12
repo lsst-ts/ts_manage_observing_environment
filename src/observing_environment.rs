@@ -48,6 +48,10 @@ impl Default for ObservingEnvironment {
                     r"https://github.com/lsst-sitcom/".to_owned(),
                 ),
                 (
+                    "ts_config_mttcs".to_owned(),
+                    r"https://github.com/lsst-ts/".to_owned(),
+                ),
+                (
                     "ts_config_attcs".to_owned(),
                     r"https://github.com/lsst-ts/".to_owned(),
                 ),
