@@ -80,7 +80,7 @@ impl Summary {
         let atmospec = extract_value!("atmospec", summary);
         let cwfs = extract_value!("cwfs", summary);
         let summit_extras = extract_value!("summit_extras", summary);
-        let summit_utils = extract_value!("summit_utils ", summary);
+        let summit_utils = extract_value!("summit_utils", summary);
         let ts_config_attcs = extract_value!("ts_config_attcs", summary);
         let ts_config_mttcs = extract_value!("ts_config_mttcs", summary);
         let ts_config_ocs = extract_value!("ts_config_ocs", summary);
