@@ -76,7 +76,7 @@ macro_rules! extract_value {
 impl Summary {
     pub fn from_btree_map(summary: &BTreeMap<String, Result<String, ObsEnvError>>) -> Summary {
         let timestamp = Utc::now().timestamp_millis();
-        let spectractor = extract_value!("spectractor", summary);
+        let spectractor = extract_value!("Spectractor", summary);
         let atmospec = extract_value!("atmospec", summary);
         let cwfs = extract_value!("cwfs", summary);
         let summit_extras = extract_value!("summit_extras", summary);
