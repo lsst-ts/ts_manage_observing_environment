@@ -76,6 +76,14 @@ impl Default for ObservingEnvironment {
                     r"https://github.com/lsst-ts/".to_owned(),
                 ),
                 (
+                    "ts_auxtel_standardscripts".to_owned(),
+                    r"https://github.com/lsst-ts/".to_owned(),
+                ),
+                (
+                    "ts_maintel_standardscripts".to_owned(),
+                    r"https://github.com/lsst-ts/".to_owned(),
+                ),
+                (
                     "ts_wep".to_owned(),
                     r"https://github.com/lsst-ts/".to_owned(),
                 ),
@@ -545,9 +553,11 @@ mod tests {
         let obs_env = ObservingEnvironment::with_destination(".");
 
         let base_env_versions = obs_env.get_base_env_versions("main").unwrap();
+        println!("{:?}", base_env_versions);
 
         for (repo, _) in obs_env.repositories {
-            assert!(base_env_versions.contains_key(&repo))
+            println!("{repo}");
+            assert!(base_env_versions.contains_key(&repo));
         }
     }
 
