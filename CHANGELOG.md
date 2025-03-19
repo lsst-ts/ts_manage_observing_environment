@@ -3,6 +3,8 @@
 ## [0.2.3]
 
 - Add ts_auxtel_standardscripts and ts_maintel_standardscripts to the list of managed packages.
+- Add new create_setup_file method to ManageObsEnv that creates the bash file to setup the obs-env.
+  This is then called in the Setup action of manage-obs-env.
 
 ## [0.2.2]
 
