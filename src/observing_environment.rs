@@ -60,6 +60,18 @@ impl Default for ObservingEnvironment {
                     r"https://github.com/lsst-ts/".to_owned(),
                 ),
                 (
+                    "ts_auxtel_standardscripts".to_owned(),
+                    r"https://github.com/lsst-ts/".to_owned(),
+                ),
+                (
+                    "ts_maintel_standardscripts".to_owned(),
+                    r"https://github.com/lsst-ts/".to_owned(),
+                ),
+                (
+                    "ts_standardscripts".to_owned(),
+                    r"https://github.com/lsst-ts/".to_owned(),
+                ),
+                (
                     "ts_externalscripts".to_owned(),
                     r"https://github.com/lsst-ts/".to_owned(),
                 ),
@@ -69,18 +81,6 @@ impl Default for ObservingEnvironment {
                 ),
                 (
                     "ts_observing_utilities".to_owned(),
-                    r"https://github.com/lsst-ts/".to_owned(),
-                ),
-                (
-                    "ts_standardscripts".to_owned(),
-                    r"https://github.com/lsst-ts/".to_owned(),
-                ),
-                (
-                    "ts_auxtel_standardscripts".to_owned(),
-                    r"https://github.com/lsst-ts/".to_owned(),
-                ),
-                (
-                    "ts_maintel_standardscripts".to_owned(),
                     r"https://github.com/lsst-ts/".to_owned(),
                 ),
                 (
