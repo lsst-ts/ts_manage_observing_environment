@@ -119,6 +119,8 @@ where
                     Err(error) => log::error!("Failed to clone: {error:?}"),
                 }
             }
+            log::info!("Creating setup file.");
+            obs_env.create_setup_file()?;
             log::debug!("Sending action.");
             send_action_data("setup", "", "");
             log::debug!("Sending summary.");

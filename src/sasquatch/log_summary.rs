@@ -44,12 +44,14 @@ pub struct Summary {
     ts_observatory_control: String,
     ts_observing_utilities: String,
     ts_standardscripts: String,
+    ts_maintel_standardscripts: String,
+    ts_auxtel_standardscripts: String,
     ts_wep: String,
 }
 
 impl AvroSchema for Summary {
     fn get_avro_schema(&self) -> String {
-        r#"{"namespace": "lsst.obsenv","type": "record","name": "summary","fields": [{"name": "timestamp", "type": "long"},{"name": "spectractor", "type": "string"},{"name": "atmospec", "type": "string"},{"name": "cwfs", "type": "string"},{"name": "summit_extras", "type": "string"},{"name": "summit_utils", "type": "string"},{"name": "ts_config_attcs", "type": "string"},{"name": "ts_config_mttcs", "type": "string"},{"name": "ts_config_ocs", "type": "string"},{"name": "ts_externalscripts", "type": "string"},{"name": "ts_observatory_control", "type": "string"},{"name": "ts_observing_utilities", "type": "string"},{"name": "ts_standardscripts", "type": "string"},{"name": "ts_wep", "type": "string"}]}"#
+        r#"{"namespace": "lsst.obsenv","type": "record","name": "summary","fields": [{"name": "timestamp", "type": "long"},{"name": "spectractor", "type": "string"},{"name": "atmospec", "type": "string"},{"name": "cwfs", "type": "string"},{"name": "summit_extras", "type": "string"},{"name": "summit_utils", "type": "string"},{"name": "ts_config_attcs", "type": "string"},{"name": "ts_config_mttcs", "type": "string"},{"name": "ts_config_ocs", "type": "string"},{"name": "ts_externalscripts", "type": "string"},{"name": "ts_observatory_control", "type": "string"},{"name": "ts_observing_utilities", "type": "string"},{"name": "ts_standardscripts", "type": "string"},{"name": "ts_maintel_standardscripts", "type": "string"},{"name": "ts_auxtel_standardscripts", "type": "string"},{"name": "ts_wep", "type": "string"}]}"#
         .to_owned()
     }
 }
@@ -88,6 +90,8 @@ impl Summary {
         let ts_observatory_control = extract_value!("ts_observatory_control", summary);
         let ts_observing_utilities = extract_value!("ts_observing_utilities", summary);
         let ts_standardscripts = extract_value!("ts_standardscripts", summary);
+        let ts_maintel_standardscripts = extract_value!("ts_maintel_standardscripts", summary);
+        let ts_auxtel_standardscripts = extract_value!("ts_auxtel_standardscripts", summary);
         let ts_wep = extract_value!("ts_wep", summary);
 
         Summary {
@@ -104,6 +108,8 @@ impl Summary {
             ts_observatory_control,
             ts_observing_utilities,
             ts_standardscripts,
+            ts_maintel_standardscripts,
+            ts_auxtel_standardscripts,
             ts_wep,
         }
     }
