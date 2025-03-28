@@ -5,6 +5,7 @@ use crate::{
     sasquatch::{
         create_topic::create_topics,
         log_summary::{get_payload, ActionData, AvroSchema, Payload, Summary},
+        run_branch::{self, RunBranch},
     },
 };
 use clap::Parser;
@@ -254,6 +255,12 @@ fn send_action_data(action: &str, repository: &str, branch_name: &str) {
     let action = ActionData::new(action, repository, branch_name);
     let payload = get_payload(action);
     send_payload(&payload, ActionData::get_topic_name());
+}
+
+fn send_run_branch(branch_name: &str) {
+    let run_branch = RunBranch::new(branch_name);
+    let payload = get_payload(run_branch);
+    send_payload(&payload, RunBranch::get_topic_name());
 }
 
 fn send_payload<T: AvroSchema + Debug + Serialize>(payload: &Payload<T>, topic_name: &str) {
