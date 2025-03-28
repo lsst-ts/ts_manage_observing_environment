@@ -133,7 +133,18 @@ where
         }
         Action::Reset => {
             log::info!("Resetting Observing environment...");
-            if let Err(error) = obs_env.reset_base_environment(config.get_base_env_source_repo()) {
+            let run_branch = {
+                if let Ok(efd_name) = env::var("MANAGE_OBS_ENV_EFD_NAME") {
+                    RunBranch::retrieve_from_efd(&efd_name)?
+                        .get_branch_name()
+                        .to_owned()
+                } else {
+                    "".to_owned()
+                }
+            };
+            if let Err(error) =
+                obs_env.reset_base_environment(config.get_base_env_source_repo(), &run_branch)
+            {
                 log::error!("Error resetting {} repositories.", error.len());
                 for err in error {
                     log::error!("{:?}", err);
