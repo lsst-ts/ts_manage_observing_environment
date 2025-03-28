@@ -138,7 +138,7 @@ where
                     log::error!("{:?}", err);
                 }
             } else {
-                log::info!("All repositories set to they base versions.");
+                log::info!("All repositories set to their base versions.");
             }
             log::debug!("Sending action.");
             send_action_data("reset", "", "");
