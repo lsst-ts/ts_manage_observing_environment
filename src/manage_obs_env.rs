@@ -221,6 +221,18 @@ where
             log::debug!("Sending action.");
             send_action_data("register-run-branch", "", &config.get_branch_name());
         }
+        Action::ClearRunBranch => {
+            if let Ok(_) = env::var("SASQUATCH_REST_PROXY_URL") {
+                log::info!("Clearing run branch.");
+                send_run_branch("");
+            } else {
+                log::error!(
+                    "In order to clear the run branch you must setup SASQUATCH_REST_PROXY_URL."
+                );
+            }
+            log::debug!("Sending action.");
+            send_action_data("clear-run-branch", "", "");
+        }
     };
     Ok(())
 }
@@ -248,6 +260,8 @@ pub enum Action {
     CreateTopics,
     /// Register run branch.
     RegisterRunBranch,
+    /// Clear the run branch.
+    ClearRunBranch,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
