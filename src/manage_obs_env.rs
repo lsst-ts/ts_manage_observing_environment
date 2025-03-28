@@ -209,6 +209,18 @@ where
                 );
             }
         }
+        Action::RegisterRunBranch => {
+            if let Ok(_) = env::var("SASQUATCH_REST_PROXY_URL") {
+                log::info!("Registering run branch.");
+                send_run_branch(&config.get_branch_name());
+            } else {
+                log::error!(
+                    "In order to register the run branch you must setup SASQUATCH_REST_PROXY_URL."
+                );
+            }
+            log::debug!("Sending action.");
+            send_action_data("register-run-branch", "", &config.get_branch_name());
+        }
     };
     Ok(())
 }
@@ -234,6 +246,8 @@ pub enum Action {
     CheckoutVersion,
     /// Create topics to log data to sasquatch.
     CreateTopics,
+    /// Register run branch.
+    RegisterRunBranch,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
