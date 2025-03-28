@@ -246,6 +246,37 @@ where
             log::debug!("Sending action.");
             send_action_data("list-run-branch", "", "");
         }
+        Action::CheckoutRunBranch => {
+            if let Ok(efd_name) = env::var("MANAGE_OBS_ENV_EFD_NAME") {
+                let run_branch = RunBranch::retrieve_from_efd(&efd_name)?;
+                if run_branch.get_branch_name().len() > 0 {
+                    log::info!(
+                        "Checkout run branch ({}) for {}.",
+                        run_branch.get_branch_name(),
+                        config.get_repository_name()
+                    );
+                    obs_env.checkout_branch(
+                        config.get_repository_name(),
+                        run_branch.get_branch_name(),
+                    )?;
+                    log::debug!("Sending action.");
+                    send_action_data(
+                        "checkout-run-branch",
+                        config.get_repository_name(),
+                        run_branch.get_branch_name(),
+                    );
+                    log::debug!("Sending summary.");
+                    let current_versions = obs_env.get_current_env_versions();
+                    send_summary_data(&current_versions);
+                } else {
+                    log::error!("Currently no run branch registered.");
+                }
+            } else {
+                log::error!(
+                    "In order to checkout the currently registered run branch you must setup the MANAGE_OBS_ENV_EFD_NAME environment variable with the name of the EFD instance for this environment."
+                );
+            }
+        }
     };
     Ok(())
 }
@@ -277,6 +308,8 @@ pub enum Action {
     ClearRunBranch,
     /// List the currently registered run branch.
     ListRunBranch,
+    /// Checkout the run branch for a specific repository.
+    CheckoutRunBranch,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
