@@ -100,5 +100,17 @@ pub fn create_topics(sasquatch_rest_proxy_url: &str) -> Result<(), Box<dyn StdEr
         .json(&topic_config)
         .send()?;
     log::debug!("{res:?}");
+    let topic_config = TopicConfig::default()
+        .with_topic_name("lsst.obsenv.run_branch")
+        .with_partitions_count(1)
+        .with_replication_factor(3);
+    log::debug!("{topic_config:?}");
+    let res = client
+        .post(format!(
+            "{sasquatch_rest_proxy_url}/sasquatch-rest-proxy/v3/clusters/{cluster_id}/topics"
+        ))
+        .json(&topic_config)
+        .send()?;
+    log::debug!("{res:?}");
     Ok(())
 }
