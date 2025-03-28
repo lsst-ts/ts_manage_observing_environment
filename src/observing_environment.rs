@@ -202,10 +202,38 @@ impl ObservingEnvironment {
     }
 
     /// Reset all repositories to their official version.
-    pub fn reset_base_environment(&self, base_env_branch: &str) -> Result<(), Vec<ObsEnvError>> {
+    pub fn reset_base_environment(
+        &self,
+        base_env_branch: &str,
+        run_branch: &str,
+    ) -> Result<(), Vec<ObsEnvError>> {
         match self.get_base_env_versions(base_env_branch) {
             Ok(obs_env_versions) => {
-                let reset_result: Vec<ObsEnvError> = obs_env_versions
+                let run_branch_misses: Vec<(String, String)> = {
+                    if run_branch.len() > 0 {
+                        obs_env_versions
+                            .into_iter()
+                            .map(|(repo, version)| {
+                                (
+                                    repo.clone(),
+                                    version,
+                                    self.checkout_branch(&repo, run_branch),
+                                )
+                            })
+                            .into_iter()
+                            .filter_map(|(repo, version, result)| {
+                                if result.is_err() {
+                                    Some((repo, version))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect()
+                    } else {
+                        obs_env_versions.into_iter().collect()
+                    }
+                };
+                let reset_result: Vec<ObsEnvError> = run_branch_misses
                     .into_iter()
                     .map(|(repo, version)| self.reset_index_to_version(&repo, &version))
                     .into_iter()
