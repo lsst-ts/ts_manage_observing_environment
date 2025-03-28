@@ -270,10 +270,12 @@ fn send_payload<T: AvroSchema + Debug + Serialize>(payload: &Payload<T>, topic_n
             .send()
         {
             if !res.status().is_success() {
-                log::error!("Error updating summary table: {res:?}. {payload:?}");
+                log::error!("Server replied with error to payload request: {res:?}. {payload:?}");
+            } else {
+                log::trace!("Payload: {payload:?}.");
             }
         } else {
-            log::error!("Error sending summary table.");
+            log::error!("Error sending payload.");
         }
     } else {
         log::error!(
