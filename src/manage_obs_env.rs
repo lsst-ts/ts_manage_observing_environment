@@ -233,6 +233,19 @@ where
             log::debug!("Sending action.");
             send_action_data("clear-run-branch", "", "");
         }
+        Action::ListRunBranch => {
+            if let Ok(efd_name) = env::var("MANAGE_OBS_ENV_EFD_NAME") {
+                log::info!("Retrieving run branch from {efd_name} instance of the EFD.");
+                let run_branch = RunBranch::retrieve_from_efd(&efd_name)?;
+                log::info!("Current run branch: {}", run_branch.get_branch_name());
+            } else {
+                log::error!(
+                    "In order to list the currently registered run branch you must setup the MANAGE_OBS_ENV_EFD_NAME environment variable with the name of the EFD instance for this environment."
+                );
+            }
+            log::debug!("Sending action.");
+            send_action_data("list-run-branch", "", "");
+        }
     };
     Ok(())
 }
@@ -262,6 +275,8 @@ pub enum Action {
     RegisterRunBranch,
     /// Clear the run branch.
     ClearRunBranch,
+    /// List the currently registered run branch.
+    ListRunBranch,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
