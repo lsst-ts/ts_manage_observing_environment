@@ -5,7 +5,7 @@ use crate::{
     sasquatch::{
         create_topic::create_topics,
         log_summary::{get_payload, ActionData, AvroSchema, Payload, Summary},
-        run_branch::{self, RunBranch},
+        run_branch::RunBranch,
     },
 };
 use clap::Parser;
