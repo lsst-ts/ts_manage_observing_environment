@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.4]
+
+- Fix missing argument in the setup file.
+- Remove unnecessary imports.
+
 ## [0.2.3]
 
 - Add ts_auxtel_standardscripts and ts_maintel_standardscripts to the list of managed packages.
