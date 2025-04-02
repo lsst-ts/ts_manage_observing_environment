@@ -175,7 +175,7 @@ impl ObservingEnvironment {
             if self.repositories.contains_key(repository) {
                 write!(
                     &mut f,
-                    "setup -j {repository} {}/{repository}\n",
+                    "setup -j {repository} -r {}/{repository}\n",
                     self.destination
                 )?;
             } else {
