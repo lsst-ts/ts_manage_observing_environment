@@ -1,6 +1,6 @@
 [package]
 name = "ts_observing_environment"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 description = "Package to manage observing environment."
 license = "MIT"
@@ -8,14 +8,17 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+apache-avro = "0.17.0"
 chrono = "0.4.38"
 clap = { version = "4.1.6", features = ["derive"] }
 clap_complete = "4.3.0"
 git2 = "0.16.1"
 log = "0.4.17"
 lsst_efd_client = "0.1.1"
+rdkafka = "0.37.0"
 regex = "1.7.1"
 reqwest = { version = "0.12.7", features = ["blocking", "json"] }
+schema_registry_converter = { version = "4.3.0", features = ["avro", "blocking"] }
 serde = "1.0.210"
 serde_derive = "1.0.210"
 serde_json = "1.0.128"
