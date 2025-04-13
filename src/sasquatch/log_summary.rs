@@ -24,8 +24,8 @@ pub struct Record<T> {
 pub struct ActionData {
     timestamp: i64,
     action: String,
-    repository: String,
-    branch_name: String,
+    pub repository: String,
+    pub branch_name: String,
     user: String,
 }
 
