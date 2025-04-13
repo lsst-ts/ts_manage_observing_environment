@@ -6,6 +6,7 @@
 extern crate serde_derive;
 pub mod error;
 pub mod manage_obs_env;
+pub mod obs_env_sidecar;
 pub mod observing_environment;
 pub mod repos;
 pub mod sasquatch;
