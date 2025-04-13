@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.0]
+
+- Adds sidecar application.
+
 ## [0.2.4]
 
 - Fix missing argument in the setup file.
