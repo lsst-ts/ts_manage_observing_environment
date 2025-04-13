@@ -112,6 +112,7 @@ impl ManageObsEnvCli for ManageObsEnv {
     }
 }
 
+/// Run the observing environment command line application.
 pub fn run<T>(config: &T) -> Result<(), Box<dyn Error>>
 where
     T: ManageObsEnvCli,
@@ -316,7 +317,8 @@ where
     Ok(())
 }
 
-#[derive(clap::ValueEnum, Clone, Debug)]
+/// Actions supported by the management command line application.
+#[derive(clap::ValueEnum, Clone, Debug, Default)]
 pub enum Action {
     /// Setup the observing environment?
     /// This will create the destination directory and clone all repositories.
@@ -328,6 +330,7 @@ pub enum Action {
     /// environment to their original versions.
     Reset,
     /// Show current versions.
+    #[default]
     ShowCurrentVersions,
     /// Show original versions.
     ShowOriginalVersions,
@@ -347,10 +350,12 @@ pub enum Action {
     CheckoutRunBranch,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug)]
+/// Log levels supported by the command line application.
+#[derive(clap::ValueEnum, Clone, Debug, Default)]
 pub enum LogLevel {
     Trace,
     Debug,
+    #[default]
     Info,
     Warn,
     Error,
