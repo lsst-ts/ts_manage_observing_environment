@@ -15,7 +15,7 @@ use serde::ser::Serialize;
 use std::{collections::BTreeMap, env, error::Error, fmt::Debug};
 
 /// Manage observing environment.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 #[command(author, version, about, long_about = None, name = "manage_obs_env")]
 pub struct ManageObsEnv {
     /// Which action to execute?
@@ -39,6 +39,30 @@ pub struct ManageObsEnv {
     #[arg(long = "base-env-branch-name", default_value = "main")]
     base_env_branch_name: String,
 }
+
+impl ManageObsEnv {
+    pub fn with_env_path(mut self, env_path: &str) -> Self {
+        self.env_path = env_path.to_string();
+        self
+    }
+    pub fn with_action(mut self, action: Action) -> Self {
+        self.action = action;
+        self
+    }
+    pub fn with_repository(mut self, repository: &str) -> Self {
+        self.repository = Repos::from_str(repository);
+        self
+    }
+    pub fn with_branch_name(mut self, branch_name: &str) -> Self {
+        self.branch_name = branch_name.to_string();
+        self
+    }
+    pub fn with_log_level(mut self, log_level: LogLevel) -> Self {
+        self.log_level = log_level;
+        self
+    }
+}
+
 pub trait ManageObsEnvCli {
     fn get_action(&self) -> Result<&Action, Box<dyn Error>>;
     fn get_log_level(&self) -> &LogLevel;
