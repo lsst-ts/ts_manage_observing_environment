@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.0]
+
+- Adds sidecar application.
+- Update dependency versions.
+- Fixes several clippy warnings.
+
 ## [0.2.5]
 
 - Add ts_config_scheduler to the list of repositories.
