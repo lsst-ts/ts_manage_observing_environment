@@ -84,18 +84,18 @@ pub fn run(config: &ObsEnvSidecar) -> Result<(), Box<dyn Error>> {
             .set("group.id", format!("example_group_{}", process::id()));
 
         if let (Ok(kafka_username), Ok(kafka_password)) = (
-            env::var("OBS_ENV_KAFKA_SECURITY_USERNAME"),
-            env::var("OBS_ENV_KAFKA_SECURITY_PASSWORD"),
+            env::var("LSST_KAFKA_SECURITY_USERNAME"),
+            env::var("LSST_KAFKA_SECURITY_PASSWORD"),
         ) {
             log::info!("Using {kafka_username}::{kafka_password}");
             client_config
                 .set(
                     "security.protocol",
-                    env::var("OBS_ENV_KAFKA_SECURITY_PROTOCOL").expect("SASL_PLAINTEXT"),
+                    env::var("LSST_KAFKA_SECURITY_PROTOCOL").expect("SASL_PLAINTEXT"),
                 )
                 .set(
                     "sasl.mechanism",
-                    env::var("OBS_ENV_KAFKA_SECURITY_MECHANISM").expect("SCRAM-SHA-512"),
+                    env::var("LSST_KAFKA_SECURITY_MECHANISM").expect("SCRAM-SHA-512"),
                 )
                 .set("sasl.username", kafka_username)
                 .set("sasl.password", kafka_password);
