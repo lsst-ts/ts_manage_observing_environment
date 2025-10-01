@@ -33,6 +33,8 @@ fn main() {
         schema_type: SchemaType::Avro,
         schema: action_data.get_avro_schema(),
         references: vec![],
+        properties: None,
+        tags: None,
     };
 
     let _ = post_schema(&sr_settings, subject_name.to_string(), supplied_schema);
