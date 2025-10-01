@@ -84,8 +84,8 @@ pub fn run(config: &ObsEnvSidecar) -> Result<(), Box<dyn Error>> {
             .set("group.id", format!("example_group_{}", process::id()));
 
         if let (Ok(kafka_username), Ok(kafka_password)) = (
-            env::var("LSST_KAFKA_SECURITY_USERNAME"),
-            env::var("LSST_KAFKA_SECURITY_PASSWORD"),
+            env::var("OBS_ENV_KAFKA_SECURITY_USERNAME"),
+            env::var("OBS_ENV_KAFKA_SECURITY_PASSWORD"),
         ) {
             log::info!("Using {kafka_username}::{kafka_password}");
             client_config
