@@ -36,7 +36,9 @@ pub struct ErrorGettingAction(String);
 
 impl ActionData {
     pub fn get_action(&self) -> Result<Action, ErrorGettingAction> {
-        if self.action == "checkout-branch".to_string() {
+        if self.action == "checkout-branch".to_string()
+            || self.action == "checkout-run-branch".to_string()
+        {
             Ok(Action::CheckoutBranch)
         } else {
             Err(ErrorGettingAction(format!(
