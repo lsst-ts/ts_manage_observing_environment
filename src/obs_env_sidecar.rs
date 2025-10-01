@@ -91,11 +91,13 @@ pub fn run(config: &ObsEnvSidecar) -> Result<(), Box<dyn Error>> {
             client_config
                 .set(
                     "security.protocol",
-                    env::var("LSST_KAFKA_SECURITY_PROTOCOL").expect("SASL_PLAINTEXT"),
+                    env::var("LSST_KAFKA_SECURITY_PROTOCOL")
+                        .unwrap_or("SASL_PLAINTEXT".to_string()),
                 )
                 .set(
                     "sasl.mechanism",
-                    env::var("LSST_KAFKA_SECURITY_MECHANISM").expect("SCRAM-SHA-512"),
+                    env::var("LSST_KAFKA_SECURITY_MECHANISM")
+                        .unwrap_or("SCRAM-SHA-512".to_string()),
                 )
                 .set("sasl.username", kafka_username)
                 .set("sasl.password", kafka_password);
