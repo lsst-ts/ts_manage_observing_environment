@@ -146,7 +146,7 @@ pub fn run(config: &ObsEnvSidecar) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn get_client_hosts() -> String {
-    if let Ok(client_host) = env::var("OBS_ENV_KAFKA_BROKER_ADDR") {
+    if let Ok(client_host) = env::var("LSST_KAFKA_BROKER_ADDR") {
         client_host
     } else {
         "localhost:9092".to_string()
@@ -154,7 +154,7 @@ pub fn get_client_hosts() -> String {
 }
 
 pub fn get_schema_registry_url() -> String {
-    if let Ok(url) = env::var("OBS_ENV_SCHEMA_REGISTRY_URL") {
+    if let Ok(url) = env::var("LSST_SCHEMA_REGISTRY_URL") {
         url
     } else {
         "http://127.0.0.1:8081".to_string()
