@@ -39,7 +39,7 @@ impl Repos {
         }
     }
 
-    pub fn from_str(repository: &str) -> Option<Self> {
+    pub fn new_from_str(repository: &str) -> Option<Self> {
         match repository {
             "ts_observatory_control" => Some(Repos::TsObservatoryControl),
             "atmospec" => Some(Repos::Atmospec),
