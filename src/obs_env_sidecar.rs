@@ -13,7 +13,7 @@ use rdkafka::{
     Message,
 };
 use schema_registry_converter::blocking::{avro::AvroDecoder, schema_registry::SrSettings};
-use std::{env, error::Error, process};
+use std::{env, error::Error, fs, process};
 
 /// Implementation of the observing environment sidecar application.
 ///
@@ -27,6 +27,9 @@ pub struct ObsEnvSidecar {
     /// Path to the environment.
     #[arg(long = "env-path", default_value = "/net/obs-env/auto_base_packages")]
     env_path: String,
+    /// Configuration for the observing environment in json format.
+    #[arg(long = "obs-env-config-path", default_value = None)]
+    pub obs_env_config_path: Option<String>,
 }
 
 impl ObsEnvSidecar {
@@ -54,7 +57,17 @@ pub fn run(config: &ObsEnvSidecar) -> Result<(), Box<dyn Error>> {
 
     log::info!("Running obs_env_sidecar...");
 
-    let obs_env = ObservingEnvironment::with_destination(config.get_env_path());
+    let obs_env = {
+        if let Some(obs_env_config_path) = &config.obs_env_config_path {
+            log::info!("Reading observing environment configuration from {obs_env_config_path}.");
+            let obs_env_config = fs::read_to_string(obs_env_config_path)?;
+            ObservingEnvironment::from_json(&obs_env_config)?
+        } else {
+            let env_path = config.get_env_path();
+            log::info!("Using observing environment default configuration with environment path {env_path}.");
+            ObservingEnvironment::with_destination(env_path)
+        }
+    };
 
     log::info!("Setup obs_env...");
 
