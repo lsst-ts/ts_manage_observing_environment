@@ -43,7 +43,7 @@ impl ObsEnvSidecar {
 }
 
 pub fn run(config: &ObsEnvSidecar) -> Result<(), Box<dyn Error>> {
-    if let Ok(_) = env::var("SASQUATCH_REST_PROXY_URL") {
+    if env::var("SASQUATCH_REST_PROXY_URL").is_ok() {
         return Err(Box::new(ObsEnvError::ERROR("The SASQUATCH_REST_PROXY_URL environment variable cannot be set for the sidecar operation.".to_string())));
     }
 
