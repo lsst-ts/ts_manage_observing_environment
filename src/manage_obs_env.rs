@@ -50,7 +50,7 @@ impl ManageObsEnv {
         self
     }
     pub fn with_repository(mut self, repository: &str) -> Self {
-        self.repository = Repos::from_str(repository);
+        self.repository = Repos::new_from_str(repository);
         self
     }
     pub fn with_branch_name(mut self, branch_name: &str) -> Self {
