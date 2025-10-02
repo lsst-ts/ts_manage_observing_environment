@@ -246,19 +246,19 @@ where
             }
         }
         Action::RegisterRunBranch => {
-            if let Ok(_) = env::var("SASQUATCH_REST_PROXY_URL") {
+            if env::var("SASQUATCH_REST_PROXY_URL").is_ok() {
                 log::info!("Registering run branch.");
-                send_run_branch(&config.get_branch_name());
+                send_run_branch(config.get_branch_name());
             } else {
                 log::error!(
                     "In order to register the run branch you must setup SASQUATCH_REST_PROXY_URL."
                 );
             }
             log::debug!("Sending action.");
-            send_action_data("register-run-branch", "", &config.get_branch_name());
+            send_action_data("register-run-branch", "", config.get_branch_name());
         }
         Action::ClearRunBranch => {
-            if let Ok(_) = env::var("SASQUATCH_REST_PROXY_URL") {
+            if env::var("SASQUATCH_REST_PROXY_URL").is_ok() {
                 log::info!("Clearing run branch.");
                 send_run_branch("");
             } else {
@@ -285,7 +285,7 @@ where
         Action::CheckoutRunBranch => {
             if let Ok(efd_name) = env::var("MANAGE_OBS_ENV_EFD_NAME") {
                 let run_branch = RunBranch::retrieve_from_efd(&efd_name)?;
-                if run_branch.get_branch_name().len() > 0 {
+                if !run_branch.get_branch_name().is_empty() {
                     log::info!(
                         "Checkout run branch ({}) for {}.",
                         run_branch.get_branch_name(),
