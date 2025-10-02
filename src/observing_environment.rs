@@ -5,7 +5,7 @@ use log::{debug, trace};
 use regex::Regex;
 use std::{
     collections::BTreeMap,
-    env,
+    env, error,
     fs::{create_dir, remove_file, File},
     io::{BufRead, BufReader, Write},
     path::Path,
@@ -14,6 +14,7 @@ use std::{
 const REPO_VERSION_REGEXP: &str = r"(?P<name>[a-zA-Z0-9_]*)=(?P<version>[a-zA-Z0-9._]*)";
 const VALID_VERSION: &str = r"^(?P<major>[0-9]*)\.(?P<minor>[0-9]*)\.(?P<patch>[0-9]*)";
 
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ObservingEnvironment {
     /// List of repositories that belong to the observing environment.
     repositories: BTreeMap<String, String>,
@@ -103,6 +104,11 @@ impl Default for ObservingEnvironment {
 }
 
 impl ObservingEnvironment {
+    pub fn from_json(json: &str) -> Result<Self, Box<dyn error::Error>> {
+        let observing_environment: ObservingEnvironment = serde_json::from_str(json)?;
+        Ok(observing_environment)
+    }
+
     pub fn with_destination(dest: &str) -> ObservingEnvironment {
         ObservingEnvironment {
             destination: dest.to_owned(),
