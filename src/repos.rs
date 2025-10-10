@@ -15,6 +15,7 @@ pub enum Repos {
     TsConfigOCS,
     TsConfigATTCS,
     TsConfigMTTCS,
+    TsConfigScheduler,
 }
 
 impl Repos {
@@ -34,6 +35,7 @@ impl Repos {
             Repos::TsConfigOCS => "ts_config_ocs",
             Repos::TsConfigATTCS => "ts_config_attcs",
             Repos::TsConfigMTTCS => "ts_config_mttcs",
+            Repos::TsConfigScheduler => "ts_config_scheduler",
         }
     }
 }

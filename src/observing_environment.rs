@@ -62,6 +62,10 @@ impl Default for ObservingEnvironment {
                     r"https://github.com/lsst-ts/".to_owned(),
                 ),
                 (
+                    "ts_config_scheduler".to_owned(),
+                    r"https://github.com/lsst-ts/".to_owned(),
+                ),
+                (
                     "ts_auxtel_standardscripts".to_owned(),
                     r"https://github.com/lsst-ts/".to_owned(),
                 ),
