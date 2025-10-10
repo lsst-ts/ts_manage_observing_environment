@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.5]
+
+- Add ts_config_scheduler to the list of repositories.
+
 ## [0.2.4]
 
 - Fix missing argument in the setup file.
