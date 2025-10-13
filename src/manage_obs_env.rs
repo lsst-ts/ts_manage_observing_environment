@@ -15,7 +15,7 @@ use serde::ser::Serialize;
 use std::{collections::BTreeMap, env, error::Error, fmt::Debug};
 
 /// Manage observing environment.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 #[command(author, version, about, long_about = None, name = "manage_obs_env")]
 pub struct ManageObsEnv {
     /// Which action to execute?
@@ -39,6 +39,30 @@ pub struct ManageObsEnv {
     #[arg(long = "base-env-branch-name", default_value = "main")]
     base_env_branch_name: String,
 }
+
+impl ManageObsEnv {
+    pub fn with_env_path(mut self, env_path: &str) -> Self {
+        self.env_path = env_path.to_string();
+        self
+    }
+    pub fn with_action(mut self, action: Action) -> Self {
+        self.action = action;
+        self
+    }
+    pub fn with_repository(mut self, repository: &str) -> Self {
+        self.repository = Repos::new_from_str(repository);
+        self
+    }
+    pub fn with_branch_name(mut self, branch_name: &str) -> Self {
+        self.branch_name = branch_name.to_string();
+        self
+    }
+    pub fn with_log_level(mut self, log_level: LogLevel) -> Self {
+        self.log_level = log_level;
+        self
+    }
+}
+
 pub trait ManageObsEnvCli {
     fn get_action(&self) -> Result<&Action, Box<dyn Error>>;
     fn get_log_level(&self) -> &LogLevel;
@@ -88,6 +112,7 @@ impl ManageObsEnvCli for ManageObsEnv {
     }
 }
 
+/// Run the observing environment command line application.
 pub fn run<T>(config: &T) -> Result<(), Box<dyn Error>>
 where
     T: ManageObsEnvCli,
@@ -221,19 +246,19 @@ where
             }
         }
         Action::RegisterRunBranch => {
-            if let Ok(_) = env::var("SASQUATCH_REST_PROXY_URL") {
+            if env::var("SASQUATCH_REST_PROXY_URL").is_ok() {
                 log::info!("Registering run branch.");
-                send_run_branch(&config.get_branch_name());
+                send_run_branch(config.get_branch_name());
             } else {
                 log::error!(
                     "In order to register the run branch you must setup SASQUATCH_REST_PROXY_URL."
                 );
             }
             log::debug!("Sending action.");
-            send_action_data("register-run-branch", "", &config.get_branch_name());
+            send_action_data("register-run-branch", "", config.get_branch_name());
         }
         Action::ClearRunBranch => {
-            if let Ok(_) = env::var("SASQUATCH_REST_PROXY_URL") {
+            if env::var("SASQUATCH_REST_PROXY_URL").is_ok() {
                 log::info!("Clearing run branch.");
                 send_run_branch("");
             } else {
@@ -260,7 +285,7 @@ where
         Action::CheckoutRunBranch => {
             if let Ok(efd_name) = env::var("MANAGE_OBS_ENV_EFD_NAME") {
                 let run_branch = RunBranch::retrieve_from_efd(&efd_name)?;
-                if run_branch.get_branch_name().len() > 0 {
+                if !run_branch.get_branch_name().is_empty() {
                     log::info!(
                         "Checkout run branch ({}) for {}.",
                         run_branch.get_branch_name(),
@@ -292,7 +317,8 @@ where
     Ok(())
 }
 
-#[derive(clap::ValueEnum, Clone, Debug)]
+/// Actions supported by the management command line application.
+#[derive(clap::ValueEnum, Clone, Debug, Default)]
 pub enum Action {
     /// Setup the observing environment?
     /// This will create the destination directory and clone all repositories.
@@ -304,6 +330,7 @@ pub enum Action {
     /// environment to their original versions.
     Reset,
     /// Show current versions.
+    #[default]
     ShowCurrentVersions,
     /// Show original versions.
     ShowOriginalVersions,
@@ -323,10 +350,12 @@ pub enum Action {
     CheckoutRunBranch,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug)]
+/// Log levels supported by the command line application.
+#[derive(clap::ValueEnum, Clone, Debug, Default)]
 pub enum LogLevel {
     Trace,
     Debug,
+    #[default]
     Info,
     Warn,
     Error,

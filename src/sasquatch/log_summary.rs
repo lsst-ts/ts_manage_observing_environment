@@ -1,6 +1,7 @@
-use crate::error::ObsEnvError;
+use crate::{error::ObsEnvError, manage_obs_env::Action};
 use chrono::Utc;
 use std::{collections::BTreeMap, env};
+use thiserror::Error as ThisError;
 
 pub trait AvroSchema {
     fn get_avro_schema(&self) -> String;
@@ -24,9 +25,28 @@ pub struct Record<T> {
 pub struct ActionData {
     timestamp: i64,
     action: String,
-    repository: String,
-    branch_name: String,
+    pub repository: String,
+    pub branch_name: String,
     user: String,
+}
+
+#[derive(Clone, Debug, Eq, ThisError, PartialEq)]
+#[error("{0}")]
+pub struct ErrorGettingAction(String);
+
+impl ActionData {
+    pub fn get_action(&self) -> Result<Action, ErrorGettingAction> {
+        if self.action == "checkout-branch" || self.action == "checkout-run-branch" {
+            Ok(Action::CheckoutBranch)
+        } else if self.action == "reset" {
+            Ok(Action::Reset)
+        } else {
+            Err(ErrorGettingAction(format!(
+                "Unsupported action: {}",
+                self.action
+            )))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]

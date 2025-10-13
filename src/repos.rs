@@ -38,4 +38,24 @@ impl Repos {
             Repos::TsConfigScheduler => "ts_config_scheduler",
         }
     }
+
+    pub fn new_from_str(repository: &str) -> Option<Self> {
+        match repository {
+            "ts_observatory_control" => Some(Repos::TsObservatoryControl),
+            "atmospec" => Some(Repos::Atmospec),
+            "Spectractor" => Some(Repos::Spectractor),
+            "summit_extras" => Some(Repos::SummitExtras),
+            "summit_utils" => Some(Repos::SummitUtils),
+            "ts_externalscripts" => Some(Repos::TsExternalscripts),
+            "ts_observing_utilities" => Some(Repos::TsObservingUtilities),
+            "ts_standardscripts" => Some(Repos::TsStandardscripts),
+            "ts_auxtel_standardscripts" => Some(Repos::TsAuxtelStandardscripts),
+            "ts_maintel_standardscripts" => Some(Repos::TsMaintelStandardscripts),
+            "ts_wep" => Some(Repos::TsWep),
+            "ts_config_ocs" => Some(Repos::TsConfigOCS),
+            "ts_config_attcs" => Some(Repos::TsConfigATTCS),
+            "ts_config_mttcs" => Some(Repos::TsConfigMTTCS),
+            _ => None,
+        }
+    }
 }

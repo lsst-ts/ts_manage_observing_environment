@@ -5,7 +5,7 @@ use log::{debug, trace};
 use regex::Regex;
 use std::{
     collections::BTreeMap,
-    env,
+    env, error,
     fs::{create_dir, remove_file, File},
     io::{BufRead, BufReader, Write},
     path::Path,
@@ -14,6 +14,7 @@ use std::{
 const REPO_VERSION_REGEXP: &str = r"(?P<name>[a-zA-Z0-9_]*)=(?P<version>[a-zA-Z0-9._]*)";
 const VALID_VERSION: &str = r"^(?P<major>[0-9]*)\.(?P<minor>[0-9]*)\.(?P<patch>[0-9]*)";
 
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ObservingEnvironment {
     /// List of repositories that belong to the observing environment.
     repositories: BTreeMap<String, String>,
@@ -103,6 +104,11 @@ impl Default for ObservingEnvironment {
 }
 
 impl ObservingEnvironment {
+    pub fn from_json(json: &str) -> Result<Self, Box<dyn error::Error>> {
+        let observing_environment: ObservingEnvironment = serde_json::from_str(json)?;
+        Ok(observing_environment)
+    }
+
     pub fn with_destination(dest: &str) -> ObservingEnvironment {
         ObservingEnvironment {
             destination: dest.to_owned(),
@@ -135,13 +141,14 @@ impl ObservingEnvironment {
 
         if destination.exists() {
             log::warn!("File {destination:?} exists. Overwritting it.");
-            remove_file(&destination)?;
+            remove_file(destination)?;
         }
 
         let mut f = File::options()
             .write(true)
             .create(true)
-            .open(&destination)?;
+            .truncate(true)
+            .open(destination)?;
 
         let now = Local::now().naive_utc();
 
@@ -177,9 +184,9 @@ impl ObservingEnvironment {
         ];
         for repository in setup_repositories {
             if self.repositories.contains_key(repository) {
-                write!(
+                writeln!(
                     &mut f,
-                    "setup -j {repository} -r {}/{repository}\n",
+                    "setup -j {repository} -r {}/{repository}",
                     self.destination
                 )?;
             } else {
@@ -214,7 +221,7 @@ impl ObservingEnvironment {
         match self.get_base_env_versions(base_env_branch) {
             Ok(obs_env_versions) => {
                 let run_branch_misses: Vec<(String, String)> = {
-                    if run_branch.len() > 0 {
+                    if !run_branch.is_empty() {
                         obs_env_versions
                             .into_iter()
                             .map(|(repo, version)| {
@@ -224,7 +231,6 @@ impl ObservingEnvironment {
                                     self.checkout_branch(&repo, run_branch),
                                 )
                             })
-                            .into_iter()
                             .filter_map(|(repo, version, result)| {
                                 if result.is_err() {
                                     Some((repo, version))
@@ -240,7 +246,6 @@ impl ObservingEnvironment {
                 let reset_result: Vec<ObsEnvError> = run_branch_misses
                     .into_iter()
                     .map(|(repo, version)| self.reset_index_to_version(&repo, &version))
-                    .into_iter()
                     .filter(|result| result.is_err())
                     .map(|err| err.unwrap_err())
                     .collect();
@@ -419,11 +424,7 @@ impl ObservingEnvironment {
                 .join(&self.base_env_def_file),
         ) {
             Ok(file) => {
-                Ok(BufReader::new(file)
-                    .lines()
-                    .into_iter()
-                    .filter_map(|line| line.ok())
-                    .collect())
+                Ok(BufReader::new(file).lines().map_while(Result::ok).collect())
                 // Note it is safe to unwrap inside the map because of the filter.
             }
             Err(error) => Err(ObsEnvError::ERROR(error.to_string())),
@@ -556,7 +557,7 @@ fn checkout_branch(repository: &Repository, branch_name: &str) -> Result<(), Err
     }
 
     trace!("Checking out branch {branch_name}");
-    let local_branch = repository.branch(&branch_name, &commit, true)?;
+    let local_branch = repository.branch(branch_name, &commit, true)?;
     trace!("Branch {branch_name} checked out ok.");
 
     if let Some(upstream_name) = branch_reference.name() {
