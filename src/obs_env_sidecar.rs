@@ -6,14 +6,16 @@ use crate::{
 };
 use apache_avro::from_value;
 use clap::Parser;
+use gethostname::gethostname;
 use log;
+use rand::{distr::Alphanumeric, Rng};
 use rdkafka::{
     config::ClientConfig,
     consumer::{BaseConsumer, Consumer},
     Message,
 };
 use schema_registry_converter::blocking::{avro::AvroDecoder, schema_registry::SrSettings};
-use std::{env, error::Error, fs, process};
+use std::{env, error::Error, fs};
 
 /// Implementation of the observing environment sidecar application.
 ///
@@ -91,10 +93,21 @@ pub fn run(config: &ObsEnvSidecar) -> Result<(), Box<dyn Error>> {
 
     let client_config = {
         let mut client_config = ClientConfig::new();
+        let hostname: String = {
+            if let Ok(hostname) = gethostname().into_string() {
+                hostname
+            } else {
+                rand::rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(7)
+                    .map(char::from)
+                    .collect()
+            }
+        };
 
         client_config
             .set("bootstrap.servers", get_client_hosts())
-            .set("group.id", format!("example_group_{}", process::id()));
+            .set("group.id", format!("obs_env_sidecar_{}", hostname));
 
         if let (Ok(kafka_username), Ok(kafka_password)) = (
             env::var("OBS_ENV_KAFKA_SECURITY_USERNAME"),
