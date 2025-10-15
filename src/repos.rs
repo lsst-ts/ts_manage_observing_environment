@@ -55,6 +55,7 @@ impl Repos {
             "ts_config_ocs" => Some(Repos::TsConfigOCS),
             "ts_config_attcs" => Some(Repos::TsConfigATTCS),
             "ts_config_mttcs" => Some(Repos::TsConfigMTTCS),
+            "ts_config_scheduler" => Some(Repos::TsConfigScheduler),
             _ => None,
         }
     }
