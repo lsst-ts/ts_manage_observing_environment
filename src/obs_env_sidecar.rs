@@ -2,7 +2,7 @@ use crate::{
     error::ObsEnvError,
     manage_obs_env::{run as run_manage_obs_env, LogLevel, ManageObsEnv},
     observing_environment::ObservingEnvironment,
-    sasquatch::log_summary::ActionData,
+    sasquatch::log_summary::{ActionData, Summary},
 };
 use apache_avro::from_value;
 use clap::Parser;
@@ -10,12 +10,15 @@ use gethostname::gethostname;
 use log;
 use rand::{distr::Alphanumeric, Rng};
 use rdkafka::{
+    bindings::rd_kafka_resp_err_t,
     config::ClientConfig,
     consumer::{BaseConsumer, Consumer},
-    Message,
+    error::KafkaResult,
+    util::Timeout,
+    Message, Offset,
 };
 use schema_registry_converter::blocking::{avro::AvroDecoder, schema_registry::SrSettings};
-use std::{env, error::Error, fs};
+use std::{env, error::Error, fs, time::Duration};
 
 /// Implementation of the observing environment sidecar application.
 ///
@@ -132,13 +135,70 @@ pub fn run(config: &ObsEnvSidecar) -> Result<(), Box<dyn Error>> {
     };
 
     let consumer: BaseConsumer = client_config.create()?;
-    consumer
-        .subscribe(&["lsst.obsenv.action"])
-        .expect("Subscription failed");
-
     let sr_settings = SrSettings::new(get_schema_registry_url());
     let avro_decoder = AvroDecoder::new(sr_settings);
 
+    let summary_topic_name = "lsst.obsenv.summary";
+
+    log::trace!("Subscribing to {summary_topic_name}.");
+
+    consumer
+        .subscribe(&[summary_topic_name])
+        .expect("Failed to subscribe to the summary topic.");
+
+    match consumer.fetch_metadata(Some(summary_topic_name), Duration::new(5, 0)) {
+        Ok(metadata) => {
+            log::info!("{summary_topic_name} metadata {metadata:?}");
+            if metadata.topics()[0].error() == Some(rd_kafka_resp_err_t::RD_KAFKA_RESP_ERR_NO_ERROR)
+                || metadata.topics()[0].error().is_none()
+            {
+                log::info!("Successfully retrieved summary topic metadata, continuing to set initial state.");
+
+                loop {
+                    let _ = consumer.poll(Timeout::After(Duration::new(5, 0)));
+                    match consumer.seek(
+                        summary_topic_name,
+                        0,
+                        Offset::OffsetTail(1),
+                        Duration::new(5, 0),
+                    ) {
+                        KafkaResult::Ok(()) => {
+                            log::debug!("Ok...");
+                            break;
+                        }
+                        KafkaResult::Err(err) => log::error!("Failed to retrieve summary data: {err}. Will not be able to synchronize with environment."),
+                    }
+                }
+                if let Some(message) = consumer.poll(Timeout::After(Duration::new(5, 0))) {
+                    let message = message?;
+                    let payload = message.payload();
+                    let decoded_message = avro_decoder.decode(payload)?;
+                    match from_value::<Summary>(&decoded_message.value) {
+                        Ok(summary) => {
+                            log::info!("Retrieved summary: {summary:?}. Synchronizing with environment.");
+                            let _ = obs_env.synchronize_with_summary(&summary);
+                        }
+                        Err(error) => log::error!("Failed to decode message: {error}. Will not be able to synchronize with environment."),
+                    }
+                } else {
+                    log::warn!("No summary data.")
+                }
+            } else {
+                log::warn!("Failed to retrieve summary topic metadata {:?}. Will not synchronize environment.", metadata.topics()[0].error())
+            }
+        }
+        Err(err) => log::error!("Failed to retrieve {summary_topic_name} metadata: {err}."),
+    }
+
+    log::trace!("Unsubscribing from summary topic...");
+    consumer.unsubscribe();
+
+    log::debug!("Subscribing to action topic...");
+    consumer
+        .subscribe(&["lsst.obsenv.action"])
+        .expect("Failed to subscribe to action topic. This topic is essential in order to monitor any action performed remotely.");
+
+    log::info!("Monitoring action data to synchronize observatory environment.");
     loop {
         for message in consumer.iter() {
             match message {
@@ -167,7 +227,9 @@ pub fn run(config: &ObsEnvSidecar) -> Result<(), Box<dyn Error>> {
                         Err(error) => log::error!("Failed to decode message: {error}"),
                     }
                 }
-                Err(error) => log::info!("Error retrieving message: {error}"),
+                Err(error) => {
+                    log::error!("Error retrieving 'action' message: {error}.");
+                }
             }
         }
     }
