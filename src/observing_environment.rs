@@ -1,7 +1,6 @@
 use crate::error::ObsEnvError;
 use chrono::Local;
 use git2::{build::CheckoutBuilder, DescribeOptions, Error, FetchOptions, Repository};
-use log::{debug, trace};
 use regex::Regex;
 use std::{
     collections::BTreeMap,
