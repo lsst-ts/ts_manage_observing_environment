@@ -1,6 +1,6 @@
 use crate::error::ObsEnvError;
 use chrono::Local;
-use git2::{build::CheckoutBuilder, DescribeOptions, Error, FetchOptions, Repository};
+use git2::{build::CheckoutBuilder, DescribeOptions, Error, ErrorCode, FetchOptions, Repository};
 use regex::Regex;
 use std::{
     collections::BTreeMap,
@@ -632,60 +632,21 @@ fn fetch_latest(repository: &Repository) -> Result<(), Error> {
 }
 
 fn checkout_branch(repository: &Repository, branch_name: &str) -> Result<(), Error> {
-    repository
-        .find_remote("origin")?
-        .fetch(&[branch_name], None, None)?;
+    log::debug!("Checking out reference: {branch_name}");
 
-    // repository.branch(branch_name, &object.peel_to_commit().unwrap(), true)?;
-    // repository.set_head(spec)?;
-    // let mut checkout_build = CheckoutBuilder::new();
-    // repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
+    fetch_latest(repository)?;
 
-    let remote_branch_name = format!("origin/{branch_name}");
-    let branch = repository.find_branch(&remote_branch_name, git2::BranchType::Remote)?;
+    let object = resolve_reference(repository, branch_name)?;
+    let commit = object.peel_to_commit()?;
 
-    let branch_reference = branch.into_reference();
-    let commit = branch_reference.peel_to_commit()?;
+    log::debug!("Checking out {branch_name} in detached HEAD mode.");
+    repository.set_head_detached(commit.id())?;
 
-    trace!("Checking out temporary branch");
-    let temp_branch = repository.branch("temp", &commit, true)?;
+    let mut checkout_builder = CheckoutBuilder::new();
+    checkout_builder.force();
+    repository.checkout_tree(&object, Some(&mut checkout_builder))?;
 
-    if let Some(temp_refname) = temp_branch.get().name() {
-        repository.set_head(temp_refname)?;
-    } else {
-        return Err(Error::new(
-            git2::ErrorCode::Ambiguous,
-            git2::ErrorClass::FetchHead,
-            "Error",
-        ));
-    }
-
-    trace!("Checking out branch {branch_name}");
-    let local_branch = repository.branch(branch_name, &commit, true)?;
-    trace!("Branch {branch_name} checked out ok.");
-
-    if let Some(upstream_name) = branch_reference.name() {
-        debug!("Upstream name: {upstream_name}");
-        let object = repository.revparse_single(upstream_name)?;
-        let mut checkout_build = CheckoutBuilder::new();
-        repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
-        // local_branch.set_upstream(Some(upstream_name))?;
-        if let Some(refname) = local_branch.get().name() {
-            repository.set_head(refname)?;
-        } else {
-            return Err(Error::new(
-                git2::ErrorCode::Ambiguous,
-                git2::ErrorClass::FetchHead,
-                "Error",
-            ));
-        }
-    } else {
-        return Err(Error::new(
-            git2::ErrorCode::Ambiguous,
-            git2::ErrorClass::FetchHead,
-            "Error",
-        ));
-    }
+    log::debug!("Successfully checked out: {branch_name}.");
 
     Ok(())
 }
@@ -696,14 +657,17 @@ mod tests {
 
     use regex::Regex;
 
+    use super::parse_git_describe_output;
     use super::{ObservingEnvironment, REPO_VERSION_REGEXP, VALID_VERSION};
 
-    use once_cell::sync::Lazy;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, OnceLock};
 
-    static REPO_ACCESS: Lazy<Mutex<()>> = Lazy::new(Mutex::default);
-
-    type TestResult<T = (), E = Box<dyn std::error::Error>> = std::result::Result<T, E>;
+    /// Returns a reference to a global static Mutex.
+    /// The Mutex is initialized only once on the first call.
+    fn test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn test_repo_version_regexp() {
@@ -737,9 +701,9 @@ mod tests {
 
     #[test]
     fn test_update_base_env_source() {
-        let _shared = REPO_ACCESS.lock().unwrap();
+        let _shared = test_lock().lock().unwrap();
 
-        let obs_env = ObservingEnvironment::with_destination(".");
+        let obs_env = ObservingEnvironment::with_destination("/tmp/obs-env/auto_base_packages");
 
         obs_env.update_base_env_source("main").unwrap();
 
@@ -750,8 +714,8 @@ mod tests {
 
     #[test]
     fn test_get_base_env_versions() {
-        let _shared = REPO_ACCESS.lock().unwrap();
-        let obs_env = ObservingEnvironment::with_destination(".");
+        let _shared = test_lock().lock().unwrap();
+        let obs_env = ObservingEnvironment::with_destination("/tmp/obs-env/auto_base_packages");
 
         let base_env_versions = obs_env.get_base_env_versions("main").unwrap();
         println!("{:?}", base_env_versions);
@@ -775,5 +739,41 @@ mod tests {
         assert!(!version_regex.is_match("main"));
         assert!(!version_regex.is_match("develop"));
         assert!(!version_regex.is_match("ticket/DM-12345"));
+    }
+
+    #[test]
+    fn test_parse_git_describe_output() {
+        // Test exact tag match
+        assert_eq!(parse_git_describe_output("v1.2.3"), "v1.2.3");
+        assert_eq!(parse_git_describe_output("1.0.0"), "1.0.0");
+
+        // Test git describe with commits after tag
+        assert_eq!(parse_git_describe_output("v1.2.3-4-gabcdef1"), "abcdef1");
+        assert_eq!(parse_git_describe_output("v1.2.3-4-gabcdef12"), "abcdef12");
+        assert_eq!(
+            parse_git_describe_output("v1.2.3-10-g123456789"),
+            "123456789"
+        );
+
+        // Test with dirty suffix
+        assert_eq!(
+            parse_git_describe_output("v1.2.3-4-gabcdef1-dirty"),
+            "abcdef1"
+        );
+        assert_eq!(parse_git_describe_output("v1.2.3-dirty"), "v1.2.3");
+
+        // Test fallback for invalid patterns
+        assert_eq!(parse_git_describe_output("invalid"), "invalid");
+        assert_eq!(parse_git_describe_output("v1.2.3-4-"), "v1.2.3-4-");
+    }
+
+    #[test]
+    fn test_checkout_main_branch() {
+        let _shared = test_lock().lock().unwrap();
+        let obs_env = ObservingEnvironment::with_destination("/tmp/obs-env/auto_base_packages");
+        obs_env.clone_repositories();
+        let _ = obs_env.reset_base_environment("main", "none");
+        let res = obs_env.checkout_branch("summit_utils", "deploy-bts");
+        assert!(res.is_ok());
     }
 }
