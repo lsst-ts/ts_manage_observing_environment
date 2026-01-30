@@ -527,6 +527,111 @@ fn checkout_tag(
     Ok(())
 }
 
+/// Parse git describe output to extract commit information.
+///
+/// Git describe can produce outputs like:
+/// - "v1.2.3" (exactly on a tag)
+/// - "v1.2.3-4-gabcdef" (4 commits after tag v1.2.3, at commit abcdef)
+/// - "v1.2.3-4-gabcdef-dirty" (same as above, with uncommitted changes)
+///
+/// Returns the actual commit hash or tag name that should be checked out.
+fn parse_git_describe_output(describe_output: &str) -> String {
+    let clean_output = describe_output.trim_end_matches("-dirty");
+
+    // Check if it's exactly a tag (no "-N-g" pattern)
+    if !clean_output.contains("-g") {
+        // This is exactly a tag name
+        return clean_output.to_string();
+    }
+
+    // Pattern: tag-N-gabcdef
+    // Extract the commit hash part (after "g")
+    if let Some(g_pos) = clean_output.rfind("-g") {
+        let commit_hash = &clean_output[g_pos + 2..];
+        if commit_hash.len() >= 7 {
+            // Return the full commit hash (git2 can handle partial hashes)
+            return commit_hash.to_string();
+        }
+    }
+
+    // Fallback: return the original output
+    describe_output.to_string()
+}
+
+/// Resolve a reference name (branch, tag, commit hash, or git describe output)
+/// to a specific commit in the repository.
+///
+/// This function tries multiple strategies to resolve the reference:
+/// 1. Direct tag lookup (refs/tags/NAME)
+/// 2. Direct branch lookup (heads/NAME or remote tracking branch)
+/// 3. Direct commit hash lookup
+/// 4. Git describe pattern parsing
+fn resolve_reference<'a>(
+    repository: &'a Repository,
+    reference: &str,
+) -> Result<git2::Object<'a>, Error> {
+    log::debug!("Resolving reference: {reference}");
+
+    // First, try to parse as git describe output
+    let resolved_target = parse_git_describe_output(reference);
+
+    if resolved_target != reference {
+        log::debug!("Parsed git describe output '{reference}' to '{resolved_target}'");
+    }
+
+    // Strategy 1: Try as a tag
+    let tag_spec = format!("refs/tags/{}", resolved_target);
+    if let Ok(object) = repository.revparse_single(&tag_spec) {
+        log::debug!("Found as tag: {tag_spec}");
+        return Ok(object);
+    }
+
+    // Strategy 2: Try as a branch name (local)
+    if let Ok(reference) = repository.find_branch(&resolved_target, git2::BranchType::Local) {
+        let commit = reference.get().peel_to_commit()?;
+        log::debug!("Found as local branch: {resolved_target}");
+        return Ok(commit.into_object());
+    }
+
+    // Strategy 3: Try as a remote branch
+    let remote_branch_name = format!("origin/{}", resolved_target);
+    if let Ok(reference) = repository.find_branch(&remote_branch_name, git2::BranchType::Remote) {
+        let commit = reference.get().peel_to_commit()?;
+        log::debug!("Found as remote branch: {remote_branch_name}");
+        return Ok(commit.into_object());
+    }
+
+    // Strategy 4: Try as a direct commit hash (full or abbreviated)
+    if let Ok(object) = repository.revparse_single(&resolved_target) {
+        log::debug!("Found as commit hash: {resolved_target}");
+        return Ok(object);
+    }
+
+    // Strategy 5: Try the original reference as-is (might be a full refspec)
+    if let Ok(object) = repository.revparse_single(reference) {
+        log::debug!("Found using original reference: {reference}");
+        return Ok(object);
+    }
+
+    Err(Error::new(
+        git2::ErrorCode::NotFound,
+        git2::ErrorClass::Reference,
+        format!("Could not resolve reference: {reference}"),
+    ))
+}
+
+/// Fetch latest changes from origin to ensure we have up-to-date references.
+fn fetch_latest(repository: &Repository) -> Result<(), Error> {
+    log::debug!("Fetching latest changes from origin...");
+    let mut remote = repository.find_remote("origin")?;
+    let mut fetch_options = FetchOptions::new();
+    fetch_options.download_tags(git2::AutotagOption::All);
+
+    remote.fetch(&[""], Some(&mut fetch_options), None)?;
+    log::debug!("Fetch completed successfully");
+    Ok(())
+}
+
 fn checkout_branch(repository: &Repository, branch_name: &str) -> Result<(), Error> {
     repository
         .find_remote("origin")?
