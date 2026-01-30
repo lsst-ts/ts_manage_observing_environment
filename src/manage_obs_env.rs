@@ -160,9 +160,10 @@ where
             log::info!("Resetting Observing environment...");
             let run_branch = {
                 if let Ok(efd_name) = env::var("MANAGE_OBS_ENV_EFD_NAME") {
-                    RunBranch::retrieve_from_efd(&efd_name)?
-                        .get_branch_name()
-                        .to_owned()
+                    RunBranch::retrieve_from_efd(&efd_name)
+                        .ok()
+                        .map(|rb| rb.get_branch_name().to_owned())
+                        .unwrap_or_else(|| "".to_owned())
                 } else {
                     "".to_owned()
                 }
