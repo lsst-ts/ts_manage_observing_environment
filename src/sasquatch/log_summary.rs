@@ -35,6 +35,26 @@ pub struct ActionData {
 pub struct ErrorGettingAction(String);
 
 impl ActionData {
+    pub fn with_timestamp(mut self, timestamp: i64) -> Self {
+        self.timestamp = timestamp;
+        self
+    }
+    pub fn with_action(mut self, action: &str) -> Self {
+        self.action = action.to_owned();
+        self
+    }
+    pub fn with_repository(mut self, repository: &str) -> Self {
+        self.repository = repository.to_owned();
+        self
+    }
+    pub fn with_branch_name(mut self, branch_name: &str) -> Self {
+        self.branch_name = branch_name.to_owned();
+        self
+    }
+    pub fn with_user(mut self, user: &str) -> Self {
+        self.user = user.to_owned();
+        self
+    }
     pub fn get_action(&self) -> Result<Action, ErrorGettingAction> {
         if self.action == "checkout-branch" || self.action == "checkout-run-branch" {
             Ok(Action::CheckoutBranch)
@@ -133,8 +153,132 @@ impl Summary {
             ts_wep,
         }
     }
+
+    pub fn to_btree_map(&self) -> BTreeMap<String, String> {
+        let mut map = BTreeMap::new();
+        map.insert("Spectractor".to_owned(), self.spectractor.clone());
+        map.insert("atmospec".to_owned(), self.atmospec.clone());
+        map.insert("cwfs".to_owned(), self.cwfs.clone());
+        map.insert("summit_extras".to_owned(), self.summit_extras.clone());
+        map.insert("summit_utils".to_owned(), self.summit_utils.clone());
+        map.insert("ts_config_attcs".to_owned(), self.ts_config_attcs.clone());
+        map.insert("ts_config_mttcs".to_owned(), self.ts_config_mttcs.clone());
+        map.insert("ts_config_ocs".to_owned(), self.ts_config_ocs.clone());
+        map.insert(
+            "ts_externalscripts".to_owned(),
+            self.ts_externalscripts.clone(),
+        );
+        map.insert(
+            "ts_observatory_control".to_owned(),
+            self.ts_observatory_control.clone(),
+        );
+        map.insert(
+            "ts_observing_utilities".to_owned(),
+            self.ts_observing_utilities.clone(),
+        );
+        map.insert(
+            "ts_standardscripts".to_owned(),
+            self.ts_standardscripts.clone(),
+        );
+        map.insert(
+            "ts_maintel_standardscripts".to_owned(),
+            self.ts_maintel_standardscripts.clone(),
+        );
+        map.insert(
+            "ts_auxtel_standardscripts".to_owned(),
+            self.ts_auxtel_standardscripts.clone(),
+        );
+        map.insert("ts_wep".to_owned(), self.ts_wep.clone());
+        map
+    }
+
     pub fn get_topic_name() -> &'static str {
         "summary"
+    }
+
+    pub fn with_timestamp(mut self, timestamp: i64) -> Self {
+        self.timestamp = timestamp;
+        self
+    }
+
+    pub fn with_utc_now_timestamp(mut self) -> Self {
+        self.timestamp = Utc::now().timestamp_millis();
+        self
+    }
+
+    pub fn with_spectractor(mut self, spectractor: &str) -> Self {
+        self.spectractor = spectractor.to_owned();
+        self
+    }
+
+    pub fn with_atmospec(mut self, atmospec: &str) -> Self {
+        self.atmospec = atmospec.to_owned();
+        self
+    }
+
+    pub fn with_cwfs(mut self, cwfs: &str) -> Self {
+        self.cwfs = cwfs.to_owned();
+        self
+    }
+
+    pub fn with_summit_extras(mut self, summit_extras: &str) -> Self {
+        self.summit_extras = summit_extras.to_owned();
+        self
+    }
+
+    pub fn with_summit_utils(mut self, summit_utils: &str) -> Self {
+        self.summit_utils = summit_utils.to_owned();
+        self
+    }
+
+    pub fn with_ts_config_attcs(mut self, ts_config_attcs: &str) -> Self {
+        self.ts_config_attcs = ts_config_attcs.to_owned();
+        self
+    }
+
+    pub fn with_ts_config_mttcs(mut self, ts_config_mttcs: &str) -> Self {
+        self.ts_config_mttcs = ts_config_mttcs.to_owned();
+        self
+    }
+
+    pub fn with_ts_config_ocs(mut self, ts_config_ocs: &str) -> Self {
+        self.ts_config_ocs = ts_config_ocs.to_owned();
+        self
+    }
+
+    pub fn with_ts_externalscripts(mut self, ts_externalscripts: &str) -> Self {
+        self.ts_externalscripts = ts_externalscripts.to_owned();
+        self
+    }
+
+    pub fn with_ts_observatory_control(mut self, ts_observatory_control: &str) -> Self {
+        self.ts_observatory_control = ts_observatory_control.to_owned();
+        self
+    }
+
+    pub fn with_ts_observing_utilities(mut self, ts_observing_utilities: &str) -> Self {
+        self.ts_observing_utilities = ts_observing_utilities.to_owned();
+        self
+    }
+
+    pub fn with_ts_standardscripts(mut self, ts_standardscripts: &str) -> Self {
+        self.ts_standardscripts = ts_standardscripts.to_owned();
+        self
+    }
+
+    pub fn with_ts_maintel_standardscripts(mut self, ts_maintel_standardscripts: &str) -> Self {
+        self.ts_maintel_standardscripts = ts_maintel_standardscripts.to_owned();
+        self
+    }
+
+    pub fn with_ts_auxtel_standardscripts(mut self, ts_auxtel_standardscripts: &str) -> Self {
+        self.ts_auxtel_standardscripts = ts_auxtel_standardscripts.to_owned();
+        self
+    }
+
+    pub fn with_ts_wep(mut self, ts_wep: &str) -> Self {
+        self.ts_wep = ts_wep.to_owned();
+        self
     }
 }
 
