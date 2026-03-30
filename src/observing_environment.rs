@@ -1,4 +1,4 @@
-use crate::error::ObsEnvError;
+use crate::{error::ObsEnvError, sasquatch::log_summary::Summary};
 use chrono::Local;
 use git2::{build::CheckoutBuilder, DescribeOptions, Error, ErrorCode, FetchOptions, Repository};
 use regex::Regex;
@@ -280,6 +280,21 @@ impl ObservingEnvironment {
                 "Repository {repo_name} not in the list of managed repositories."
             )))
         }
+    }
+
+    pub fn synchronize_with_summary(&self, summary: &Summary) -> Result<(), Error> {
+        for (key, value) in summary.to_btree_map().into_iter() {
+            if self.repositories.contains_key(&key) {
+                match self.checkout_branch(&key, &value) {
+                    Ok(_) => log::info!("Sync: {key}: {value}"),
+                    Err(error) => {
+                        log::error!("Failed to checkout branch {value} for {key}: {error}.")
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Update the base environment source file.
