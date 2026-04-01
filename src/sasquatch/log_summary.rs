@@ -80,6 +80,7 @@ pub struct Summary {
     ts_config_attcs: String,
     ts_config_mttcs: String,
     ts_config_ocs: String,
+    ts_config_scheduler: String,
     ts_externalscripts: String,
     ts_observatory_control: String,
     ts_observing_utilities: String,
@@ -91,7 +92,7 @@ pub struct Summary {
 
 impl AvroSchema for Summary {
     fn get_avro_schema(&self) -> String {
-        r#"{"namespace": "lsst.obsenv","type": "record","name": "summary","fields": [{"name": "timestamp", "type": "long"},{"name": "spectractor", "type": "string"},{"name": "atmospec", "type": "string"},{"name": "cwfs", "type": "string"},{"name": "summit_extras", "type": "string"},{"name": "summit_utils", "type": "string"},{"name": "ts_config_attcs", "type": "string"},{"name": "ts_config_mttcs", "type": "string"},{"name": "ts_config_ocs", "type": "string"},{"name": "ts_externalscripts", "type": "string"},{"name": "ts_observatory_control", "type": "string"},{"name": "ts_observing_utilities", "type": "string"},{"name": "ts_standardscripts", "type": "string"},{"name": "ts_maintel_standardscripts", "type": "string"},{"name": "ts_auxtel_standardscripts", "type": "string"},{"name": "ts_wep", "type": "string"}]}"#
+        r#"{"namespace": "lsst.obsenv","type": "record","name": "summary","fields": [{"name": "timestamp", "type": "long"},{"name": "spectractor", "type": "string"},{"name": "atmospec", "type": "string"},{"name": "cwfs", "type": "string"},{"name": "summit_extras", "type": "string"},{"name": "summit_utils", "type": "string"},{"name": "ts_config_attcs", "type": "string"},{"name": "ts_config_mttcs", "type": "string"},{"name": "ts_config_ocs", "type": "string"},{"name": "ts_config_scheduler", "type": "string"},{"name": "ts_externalscripts", "type": "string"},{"name": "ts_observatory_control", "type": "string"},{"name": "ts_observing_utilities", "type": "string"},{"name": "ts_standardscripts", "type": "string"},{"name": "ts_maintel_standardscripts", "type": "string"},{"name": "ts_auxtel_standardscripts", "type": "string"},{"name": "ts_wep", "type": "string"}]}"#
         .to_owned()
     }
 }
@@ -126,6 +127,7 @@ impl Summary {
         let ts_config_attcs = extract_value!("ts_config_attcs", summary);
         let ts_config_mttcs = extract_value!("ts_config_mttcs", summary);
         let ts_config_ocs = extract_value!("ts_config_ocs", summary);
+        let ts_config_scheduler = extract_value!("ts_config_scheduler", summary);
         let ts_externalscripts = extract_value!("ts_externalscripts", summary);
         let ts_observatory_control = extract_value!("ts_observatory_control", summary);
         let ts_observing_utilities = extract_value!("ts_observing_utilities", summary);
@@ -144,6 +146,7 @@ impl Summary {
             ts_config_attcs,
             ts_config_mttcs,
             ts_config_ocs,
+            ts_config_scheduler,
             ts_externalscripts,
             ts_observatory_control,
             ts_observing_utilities,
@@ -164,6 +167,10 @@ impl Summary {
         map.insert("ts_config_attcs".to_owned(), self.ts_config_attcs.clone());
         map.insert("ts_config_mttcs".to_owned(), self.ts_config_mttcs.clone());
         map.insert("ts_config_ocs".to_owned(), self.ts_config_ocs.clone());
+        map.insert(
+            "ts_config_scheduler".to_owned(),
+            self.ts_config_scheduler.clone(),
+        );
         map.insert(
             "ts_externalscripts".to_owned(),
             self.ts_externalscripts.clone(),
@@ -243,6 +250,11 @@ impl Summary {
 
     pub fn with_ts_config_ocs(mut self, ts_config_ocs: &str) -> Self {
         self.ts_config_ocs = ts_config_ocs.to_owned();
+        self
+    }
+
+    pub fn with_ts_config_scheduler(mut self, ts_config_scheduler: &str) -> Self {
+        self.ts_config_scheduler = ts_config_scheduler.to_owned();
         self
     }
 
