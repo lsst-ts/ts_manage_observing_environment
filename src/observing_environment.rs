@@ -1,11 +1,10 @@
-use crate::error::ObsEnvError;
+use crate::{error::ObsEnvError, sasquatch::log_summary::Summary};
 use chrono::Local;
-use git2::{build::CheckoutBuilder, DescribeOptions, Error, FetchOptions, Repository};
-use log::{debug, trace};
+use git2::{build::CheckoutBuilder, DescribeOptions, Error, ErrorCode, FetchOptions, Repository};
 use regex::Regex;
 use std::{
     collections::BTreeMap,
-    env,
+    env, error,
     fs::{create_dir, remove_file, File},
     io::{BufRead, BufReader, Write},
     path::Path,
@@ -14,6 +13,7 @@ use std::{
 const REPO_VERSION_REGEXP: &str = r"(?P<name>[a-zA-Z0-9_]*)=(?P<version>[a-zA-Z0-9._]*)";
 const VALID_VERSION: &str = r"^(?P<major>[0-9]*)\.(?P<minor>[0-9]*)\.(?P<patch>[0-9]*)";
 
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ObservingEnvironment {
     /// List of repositories that belong to the observing environment.
     repositories: BTreeMap<String, String>,
@@ -103,6 +103,11 @@ impl Default for ObservingEnvironment {
 }
 
 impl ObservingEnvironment {
+    pub fn from_json(json: &str) -> Result<Self, Box<dyn error::Error>> {
+        let observing_environment: ObservingEnvironment = serde_json::from_str(json)?;
+        Ok(observing_environment)
+    }
+
     pub fn with_destination(dest: &str) -> ObservingEnvironment {
         ObservingEnvironment {
             destination: dest.to_owned(),
@@ -135,13 +140,14 @@ impl ObservingEnvironment {
 
         if destination.exists() {
             log::warn!("File {destination:?} exists. Overwritting it.");
-            remove_file(&destination)?;
+            remove_file(destination)?;
         }
 
         let mut f = File::options()
             .write(true)
             .create(true)
-            .open(&destination)?;
+            .truncate(true)
+            .open(destination)?;
 
         let now = Local::now().naive_utc();
 
@@ -177,9 +183,9 @@ impl ObservingEnvironment {
         ];
         for repository in setup_repositories {
             if self.repositories.contains_key(repository) {
-                write!(
+                writeln!(
                     &mut f,
-                    "setup -j {repository} -r {}/{repository}\n",
+                    "setup -j {repository} -r {}/{repository}",
                     self.destination
                 )?;
             } else {
@@ -214,7 +220,7 @@ impl ObservingEnvironment {
         match self.get_base_env_versions(base_env_branch) {
             Ok(obs_env_versions) => {
                 let run_branch_misses: Vec<(String, String)> = {
-                    if run_branch.len() > 0 {
+                    if !run_branch.is_empty() {
                         obs_env_versions
                             .into_iter()
                             .map(|(repo, version)| {
@@ -224,7 +230,6 @@ impl ObservingEnvironment {
                                     self.checkout_branch(&repo, run_branch),
                                 )
                             })
-                            .into_iter()
                             .filter_map(|(repo, version, result)| {
                                 if result.is_err() {
                                     Some((repo, version))
@@ -240,7 +245,6 @@ impl ObservingEnvironment {
                 let reset_result: Vec<ObsEnvError> = run_branch_misses
                     .into_iter()
                     .map(|(repo, version)| self.reset_index_to_version(&repo, &version))
-                    .into_iter()
                     .filter(|result| result.is_err())
                     .map(|err| err.unwrap_err())
                     .collect();
@@ -276,6 +280,21 @@ impl ObservingEnvironment {
                 "Repository {repo_name} not in the list of managed repositories."
             )))
         }
+    }
+
+    pub fn synchronize_with_summary(&self, summary: &Summary) -> Result<(), Error> {
+        for (key, value) in summary.to_btree_map().into_iter() {
+            if self.repositories.contains_key(&key) {
+                match self.checkout_branch(&key, &value) {
+                    Ok(_) => log::info!("Sync: {key}: {value}"),
+                    Err(error) => {
+                        log::error!("Failed to checkout branch {value} for {key}: {error}.")
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Update the base environment source file.
@@ -419,11 +438,7 @@ impl ObservingEnvironment {
                 .join(&self.base_env_def_file),
         ) {
             Ok(file) => {
-                Ok(BufReader::new(file)
-                    .lines()
-                    .into_iter()
-                    .filter_map(|line| line.ok())
-                    .collect())
+                Ok(BufReader::new(file).lines().map_while(Result::ok).collect())
                 // Note it is safe to unwrap inside the map because of the filter.
             }
             Err(error) => Err(ObsEnvError::ERROR(error.to_string())),
@@ -526,61 +541,127 @@ fn checkout_tag(
     Ok(())
 }
 
-fn checkout_branch(repository: &Repository, branch_name: &str) -> Result<(), Error> {
-    repository
-        .find_remote("origin")?
-        .fetch(&[branch_name], None, None)?;
+/// Parse git describe output to extract commit information.
+///
+/// Git describe can produce outputs like:
+/// - "v1.2.3" (exactly on a tag)
+/// - "v1.2.3-4-gabcdef" (4 commits after tag v1.2.3, at commit abcdef)
+/// - "v1.2.3-4-gabcdef-dirty" (same as above, with uncommitted changes)
+///
+/// Returns the actual commit hash or tag name that should be checked out.
+fn parse_git_describe_output(describe_output: &str) -> String {
+    let clean_output = describe_output.trim_end_matches("-dirty");
 
-    // repository.branch(branch_name, &object.peel_to_commit().unwrap(), true)?;
-    // repository.set_head(spec)?;
-    // let mut checkout_build = CheckoutBuilder::new();
-    // repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
-
-    let remote_branch_name = format!("origin/{branch_name}");
-    let branch = repository.find_branch(&remote_branch_name, git2::BranchType::Remote)?;
-
-    let branch_reference = branch.into_reference();
-    let commit = branch_reference.peel_to_commit()?;
-
-    trace!("Checking out temporary branch");
-    let temp_branch = repository.branch("temp", &commit, true)?;
-
-    if let Some(temp_refname) = temp_branch.get().name() {
-        repository.set_head(temp_refname)?;
-    } else {
-        return Err(Error::new(
-            git2::ErrorCode::Ambiguous,
-            git2::ErrorClass::FetchHead,
-            "Error",
-        ));
+    // Check if it's exactly a tag (no "-N-g" pattern)
+    if !clean_output.contains("-g") {
+        // This is exactly a tag name
+        return clean_output.to_string();
     }
 
-    trace!("Checking out branch {branch_name}");
-    let local_branch = repository.branch(&branch_name, &commit, true)?;
-    trace!("Branch {branch_name} checked out ok.");
-
-    if let Some(upstream_name) = branch_reference.name() {
-        debug!("Upstream name: {upstream_name}");
-        let object = repository.revparse_single(upstream_name)?;
-        let mut checkout_build = CheckoutBuilder::new();
-        repository.reset(&object, git2::ResetType::Hard, Some(checkout_build.force()))?;
-        // local_branch.set_upstream(Some(upstream_name))?;
-        if let Some(refname) = local_branch.get().name() {
-            repository.set_head(refname)?;
-        } else {
-            return Err(Error::new(
-                git2::ErrorCode::Ambiguous,
-                git2::ErrorClass::FetchHead,
-                "Error",
-            ));
+    // Pattern: tag-N-gabcdef
+    // Extract the commit hash part (after "g")
+    if let Some(g_pos) = clean_output.rfind("-g") {
+        let commit_hash = &clean_output[g_pos + 2..];
+        if commit_hash.len() >= 7 {
+            // Return the full commit hash (git2 can handle partial hashes)
+            return commit_hash.to_string();
         }
-    } else {
-        return Err(Error::new(
-            git2::ErrorCode::Ambiguous,
-            git2::ErrorClass::FetchHead,
-            "Error",
-        ));
     }
+
+    // Fallback: return the original output
+    describe_output.to_string()
+}
+
+/// Resolve a reference name (branch, tag, commit hash, or git describe output)
+/// to a specific commit in the repository.
+///
+/// This function tries multiple strategies to resolve the reference:
+/// 1. Direct tag lookup (refs/tags/NAME)
+/// 2. Direct branch lookup (heads/NAME or remote tracking branch)
+/// 3. Direct commit hash lookup
+/// 4. Git describe pattern parsing
+fn resolve_reference<'a>(
+    repository: &'a Repository,
+    reference: &str,
+) -> Result<git2::Object<'a>, Error> {
+    log::debug!("Resolving reference: {reference}");
+
+    // First, try to parse as git describe output
+    let resolved_target = parse_git_describe_output(reference);
+
+    if resolved_target != reference {
+        log::debug!("Parsed git describe output '{reference}' to '{resolved_target}'");
+    }
+
+    // Strategy 1: Try as a tag
+    let tag_spec = format!("refs/tags/{}", resolved_target);
+    if let Ok(object) = repository.revparse_single(&tag_spec) {
+        log::debug!("Found as tag: {tag_spec}");
+        return Ok(object);
+    }
+
+    // Strategy 2: Try as a branch name (local)
+    if let Ok(reference) = repository.find_branch(&resolved_target, git2::BranchType::Local) {
+        let commit = reference.get().peel_to_commit()?;
+        log::debug!("Found as local branch: {resolved_target}");
+        return Ok(commit.into_object());
+    }
+
+    // Strategy 3: Try as a remote branch
+    let remote_branch_name = format!("origin/{}", resolved_target);
+    if let Ok(reference) = repository.find_branch(&remote_branch_name, git2::BranchType::Remote) {
+        let commit = reference.get().peel_to_commit()?;
+        log::debug!("Found as remote branch: {remote_branch_name}");
+        return Ok(commit.into_object());
+    }
+
+    // Strategy 4: Try as a direct commit hash (full or abbreviated)
+    if let Ok(object) = repository.revparse_single(&resolved_target) {
+        log::debug!("Found as commit hash: {resolved_target}");
+        return Ok(object);
+    }
+
+    // Strategy 5: Try the original reference as-is (might be a full refspec)
+    if let Ok(object) = repository.revparse_single(reference) {
+        log::debug!("Found using original reference: {reference}");
+        return Ok(object);
+    }
+
+    Err(Error::new(
+        git2::ErrorCode::NotFound,
+        git2::ErrorClass::Reference,
+        format!("Could not resolve reference: {reference}"),
+    ))
+}
+
+/// Fetch latest changes from origin to ensure we have up-to-date references.
+fn fetch_latest(repository: &Repository) -> Result<(), Error> {
+    log::debug!("Fetching latest changes from origin...");
+    let mut remote = repository.find_remote("origin")?;
+    let mut fetch_options = FetchOptions::new();
+    fetch_options.download_tags(git2::AutotagOption::All);
+
+    remote.fetch(&[""], Some(&mut fetch_options), None)?;
+    log::debug!("Fetch completed successfully");
+    Ok(())
+}
+
+fn checkout_branch(repository: &Repository, branch_name: &str) -> Result<(), Error> {
+    log::debug!("Checking out reference: {branch_name}");
+
+    fetch_latest(repository)?;
+
+    let object = resolve_reference(repository, branch_name)?;
+    let commit = object.peel_to_commit()?;
+
+    log::debug!("Checking out {branch_name} in detached HEAD mode.");
+    repository.set_head_detached(commit.id())?;
+
+    let mut checkout_builder = CheckoutBuilder::new();
+    checkout_builder.force();
+    repository.checkout_tree(&object, Some(&mut checkout_builder))?;
+
+    log::debug!("Successfully checked out: {branch_name}.");
 
     Ok(())
 }
@@ -591,14 +672,17 @@ mod tests {
 
     use regex::Regex;
 
+    use super::parse_git_describe_output;
     use super::{ObservingEnvironment, REPO_VERSION_REGEXP, VALID_VERSION};
 
-    use once_cell::sync::Lazy;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, OnceLock};
 
-    static REPO_ACCESS: Lazy<Mutex<()>> = Lazy::new(Mutex::default);
-
-    type TestResult<T = (), E = Box<dyn std::error::Error>> = std::result::Result<T, E>;
+    /// Returns a reference to a global static Mutex.
+    /// The Mutex is initialized only once on the first call.
+    fn test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn test_repo_version_regexp() {
@@ -632,9 +716,9 @@ mod tests {
 
     #[test]
     fn test_update_base_env_source() {
-        let _shared = REPO_ACCESS.lock().unwrap();
+        let _shared = test_lock().lock().unwrap();
 
-        let obs_env = ObservingEnvironment::with_destination(".");
+        let obs_env = ObservingEnvironment::with_destination("/tmp/obs-env/auto_base_packages");
 
         obs_env.update_base_env_source("main").unwrap();
 
@@ -645,8 +729,8 @@ mod tests {
 
     #[test]
     fn test_get_base_env_versions() {
-        let _shared = REPO_ACCESS.lock().unwrap();
-        let obs_env = ObservingEnvironment::with_destination(".");
+        let _shared = test_lock().lock().unwrap();
+        let obs_env = ObservingEnvironment::with_destination("/tmp/obs-env/auto_base_packages");
 
         let base_env_versions = obs_env.get_base_env_versions("main").unwrap();
         println!("{:?}", base_env_versions);
@@ -670,5 +754,41 @@ mod tests {
         assert!(!version_regex.is_match("main"));
         assert!(!version_regex.is_match("develop"));
         assert!(!version_regex.is_match("ticket/DM-12345"));
+    }
+
+    #[test]
+    fn test_parse_git_describe_output() {
+        // Test exact tag match
+        assert_eq!(parse_git_describe_output("v1.2.3"), "v1.2.3");
+        assert_eq!(parse_git_describe_output("1.0.0"), "1.0.0");
+
+        // Test git describe with commits after tag
+        assert_eq!(parse_git_describe_output("v1.2.3-4-gabcdef1"), "abcdef1");
+        assert_eq!(parse_git_describe_output("v1.2.3-4-gabcdef12"), "abcdef12");
+        assert_eq!(
+            parse_git_describe_output("v1.2.3-10-g123456789"),
+            "123456789"
+        );
+
+        // Test with dirty suffix
+        assert_eq!(
+            parse_git_describe_output("v1.2.3-4-gabcdef1-dirty"),
+            "abcdef1"
+        );
+        assert_eq!(parse_git_describe_output("v1.2.3-dirty"), "v1.2.3");
+
+        // Test fallback for invalid patterns
+        assert_eq!(parse_git_describe_output("invalid"), "invalid");
+        assert_eq!(parse_git_describe_output("v1.2.3-4-"), "v1.2.3-4-");
+    }
+
+    #[test]
+    fn test_checkout_main_branch() {
+        let _shared = test_lock().lock().unwrap();
+        let obs_env = ObservingEnvironment::with_destination("/tmp/obs-env/auto_base_packages");
+        obs_env.clone_repositories();
+        let _ = obs_env.reset_base_environment("main", "none");
+        let res = obs_env.checkout_branch("summit_utils", "deploy-bts");
+        assert!(res.is_ok());
     }
 }

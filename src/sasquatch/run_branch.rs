@@ -82,7 +82,7 @@ impl RunBranch {
         let response = client
             .get(influxdb_url)
             .basic_auth(efd_auth.get_username(), Some(efd_auth.get_password()))
-            .query(&[("db", "efd"), ("q", &query)])
+            .query(&[("db", "efd"), ("q", query)])
             .send()?; // Check the status code
 
         if response.status().is_success() {
@@ -91,12 +91,10 @@ impl RunBranch {
             let query_result: Result<QueryResult<RunBranchSeries>, serde_json::Error> =
                 serde_json::from_str(&text);
             match query_result {
-                Ok(query_result) => return Ok(query_result.results[0].series[0].as_run_branch()),
-                Err(error) => {
-                    return Err(Box::new(ErrorRetrievingRunBranch(format!(
-                        "Error: {error:?} parsing response: {text:?}"
-                    ))))
-                }
+                Ok(query_result) => Ok(query_result.results[0].series[0].as_run_branch()),
+                Err(error) => Err(Box::new(ErrorRetrievingRunBranch(format!(
+                    "Error: {error:?} parsing response: {text:?}"
+                )))),
             }
         } else {
             Err(Box::new(ErrorRetrievingRunBranch(format!(
